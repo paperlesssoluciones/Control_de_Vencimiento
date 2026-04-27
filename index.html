@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WMS - Toma de Vencimientos</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <!-- Carga de html5-qrcode para el escáner -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="catalog.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <div class="logo-container">
+                <div class="logo-icon">📦</div>
+                <h1>Control de Fecha de Vencimiento en Bodega</h1>
+            </div>
+            <div class="user-info">
+                <span class="role-badge">Bodega</span>
+                <span class="user-avatar">👤</span>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <!-- VISTA DE ESCANEO -->
+            <section id="view-scan" class="action-card">
+                <h2>Toma de Vencimientos</h2>
+                <p class="subtitle">Escanea la etiqueta o ingresa el código manualmente.</p>
+
+                <!-- Escáner UI -->
+                <div id="reader-container" class="scanner-container">
+                    <div id="reader"></div>
+                    <button id="btn-start-scan" class="btn btn-primary">
+                        📷 Escanear Etiqueta
+                    </button>
+                    <button id="btn-stop-scan" class="btn btn-danger hidden">
+                        ⏹ Detener Escáner
+                    </button>
+                    <button id="btn-manual-entry" class="btn btn-manual hidden">
+                        ✏️ Sin etiqueta / Carga Manual
+                    </button>
+                </div>
+
+                <div class="divider">
+                    <span>O carga manual</span>
+                </div>
+
+                <!-- Formulario -->
+                <form id="capture-form" class="capture-form">
+                    <div class="form-group">
+                        <div style="display: flex; justify-content: space-between;">
+                            <label for="sku">SKU del Producto</label>
+                            <label style="font-size: 12px; cursor: pointer;">
+                                <input type="checkbox" id="pin-sku" checked> Fijar SKU
+                            </label>
+                        </div>
+                        <input type="text" id="sku" placeholder="Ej. 104592" inputmode="numeric" pattern="[0-9]*" required>
+                    </div>
+
+                    <div class="form-group" id="desc-group" style="display: none;">
+                        <label for="description">Descripción</label>
+                        <input type="text" id="description" readonly style="background-color: var(--border-color); color: var(--success); font-weight: bold;">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="expiry-date">Fecha de Vencimiento</label>
+                        <input type="date" id="expiry-date" required>
+                        <div id="fefo-status" style="margin-top: 5px; font-weight: bold; font-size: 14px;"></div>
+                        <small style="color: var(--text-muted); font-size: 12px;">Puedes modificar esta fecha manualmente si la estiba tiene otra diferente.</small>
+                    </div>
+
+                    <div class="form-row-mobile">
+                        <div class="form-group form-group-qty">
+                            <label for="quantity">Cantidad</label>
+                            <input type="number" id="quantity" placeholder="0" min="1" max="9999" maxlength="4" inputmode="numeric" required>
+                        </div>
+                        <div class="form-group form-group-loc">
+                            <label for="location">Ubicación</label>
+                            <input type="text" id="location" placeholder="Pasillo A" required>
+                            <small style="color: var(--text-muted); font-size: 12px; display: block; margin-top: 4px;">Se mantiene fijo al guardar.</small>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-success btn-large">
+                        💾 Registrar Movimiento
+                    </button>
+                </form>
+            </section>
+
+            <!-- VISTA DE HISTORIAL -->
+            <section id="view-history" class="action-card" style="display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h2>Registros de Hoy</h2>
+                    <button id="btn-export-csv" class="btn btn-success" style="padding: 0.5rem 1rem; font-size: 0.9rem;">
+                        📥 Descargar CSV
+                    </button>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="history-table" id="history-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Hora</th>
+                                <th>Toma</th>
+                                <th>SKU</th>
+                                <th>Descripción</th>
+                                <th>Venc.</th>
+                                <th>Días Venc.</th>
+                                <th>Cant</th>
+                                <th>Ubicación</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-tbody">
+                            <!-- Los registros se inyectarán aquí -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div style="margin-top: 1rem; text-align: right;">
+                    <button id="btn-clear-history" class="btn btn-danger" style="padding: 0.5rem 1rem; font-size: 0.9rem; background-color: var(--danger);">
+                        🗑 Limpiar Sesión
+                    </button>
+                </div>
+            </section>
+
+            <!-- VISTA DE REPORTE FEFO -->
+            <section id="view-fefo" class="action-card" style="display: none;">
+                <div class="no-print" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h2>Prioridades de Salida</h2>
+                    <button id="btn-print" class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.9rem;">
+                        🖨️ Imprimir
+                    </button>
+                </div>
+                
+                <div class="print-header" style="display: none;">
+                    <h1>Reporte FEFO - Prioridad de Salida</h1>
+                    <p id="print-date"></p>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="history-table" id="fefo-table">
+                        <thead>
+                            <tr>
+                                <th>Prioridad</th>
+                                <th>Ubicación</th>
+                                <th>SKU</th>
+                                <th>Descripción</th>
+                                <th>Cant</th>
+                                <th>Días Venc.</th>
+                            </tr>
+                        </thead>
+                        <tbody id="fefo-tbody">
+                            <!-- Los registros se inyectarán aquí ordenados por FEFO -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Mensaje de éxito/error (Toast) -->
+            <div id="toast" class="toast hidden">
+                Registro guardado correctamente.
+            </div>
+        </main>
+
+        <!-- Barra de Navegación Inferior -->
+        <nav class="bottom-nav no-print">
+            <button class="nav-btn active" data-target="view-scan">
+                <span class="nav-icon">📷</span>
+                <span>Escanear</span>
+            </button>
+            <button class="nav-btn" data-target="view-history">
+                <span class="nav-icon">📋</span>
+                <span>Historial</span>
+            </button>
+            <button class="nav-btn" data-target="view-fefo">
+                <span class="nav-icon">🚨</span>
+                <span>Reporte FEFO</span>
+            </button>
+        </nav>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
