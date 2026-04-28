@@ -13,6 +13,8 @@
     <link rel="stylesheet" href="styles.css">
     <!-- Carga de html5-qrcode para el escáner -->
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <!-- jsPDF para generar PDFs -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="catalog.js"></script>
 </head>
 <body>
@@ -98,9 +100,14 @@
             <section id="view-history" class="action-card" style="display: none;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                     <h2>Registros de Hoy</h2>
-                    <button id="btn-export-csv" class="btn btn-success" style="padding: 0.5rem 1rem; font-size: 0.9rem;">
-                        📥 Descargar CSV
-                    </button>
+                    <div style="display: flex; gap: 8px;">
+                        <button id="btn-export-csv" class="btn btn-success" style="padding: 0.5rem 0.8rem; font-size: 0.85rem;">
+                            📥 Excel
+                        </button>
+                        <button id="btn-share-csv" class="btn btn-share" style="padding: 0.5rem 0.8rem; font-size: 0.85rem;">
+                            📧 Enviar
+                        </button>
+                    </div>
                 </div>
                 
                 <div class="table-responsive">
@@ -136,9 +143,14 @@
             <section id="view-fefo" class="action-card" style="display: none;">
                 <div class="no-print" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                     <h2>Prioridades de Salida</h2>
-                    <button id="btn-print" class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.9rem;">
-                        🖨️ Imprimir
-                    </button>
+                    <div style="display: flex; gap: 8px;">
+                        <button id="btn-print" class="btn btn-primary" style="padding: 0.5rem 0.8rem; font-size: 0.85rem;">
+                            🖨️ Imprimir
+                        </button>
+                        <button id="btn-share-fefo" class="btn btn-share" style="padding: 0.5rem 0.8rem; font-size: 0.85rem;">
+                            📧 Enviar PDF
+                        </button>
+                    </div>
                 </div>
                 
                 <div class="print-header" style="display: none;">

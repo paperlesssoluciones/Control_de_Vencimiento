@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wms-bodega-v1';
+const CACHE_NAME = 'wms-bodega-v2';
 
 // Archivos locales a cachear durante la instalación
 const LOCAL_FILES = [

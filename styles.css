@@ -417,3 +417,13 @@ input:focus {
 .btn-manual:hover {
     background-color: rgba(245, 158, 11, 0.3);
 }
+
+/* Boton compartir/enviar por mail */
+.btn-share {
+    background-color: rgba(59, 130, 246, 0.15);
+    color: var(--primary);
+    border: 1px solid var(--primary);
+}
+.btn-share:hover {
+    background-color: rgba(59, 130, 246, 0.3);
+}

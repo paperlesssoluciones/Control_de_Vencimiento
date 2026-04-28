@@ -446,46 +446,192 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- EXPORTACIÓN A CSV ---
-    document.getElementById('btn-export-csv').addEventListener('click', () => {
-        const records = JSON.parse(localStorage.getItem('wms_records')) || [];
-        if (records.length === 0) {
-            alert("No hay registros para exportar.");
-            return;
-        }
+    // --- FUNCIONES DE EXPORTACIÓN Y COMPARTIR ---
 
-        // Crear CSV (agregando las nuevas columnas de la Fase 3)
-        let csvContent = "Secuencia,Fecha Toma,Hora Toma,SKU,Descripcion,Fecha Vencimiento,Dias para Vencer,Fecha Elaboracion,Cantidad,Ubicacion\n";
-        
+    // Genera el contenido CSV con BOM para Excel directo
+    function buildCSVContent() {
+        const records = JSON.parse(localStorage.getItem('wms_records')) || [];
+        if (records.length === 0) return null;
+
+        let csv = "Secuencia,Fecha Toma,Hora Toma,SKU,Descripcion,Fecha Vencimiento,Dias para Vencer,Fecha Elaboracion,Cantidad,Ubicacion\n";
         records.forEach((r, index) => {
             const d = new Date(r.timestamp);
             const dateCap = `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getFullYear()}`;
             const timeCap = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
-            
             const [y, m, day] = r.expiryDate.split('-');
-            const expStr = `${day}/${m}/${y}`; // YYYY para excel
-            
+            const expStr = `${day}/${m}/${y}`;
             let prodStr = "";
             if (r.productionDate) {
                 const [py, pm, pd] = r.productionDate.split('-');
                 prodStr = `${pd}/${pm}/${py}`;
             }
-
-            const safeDesc = r.description ? r.description.replace(/,/g, '') : '';
-            
-            csvContent += `${index + 1},${dateCap},${timeCap},${r.sku},${safeDesc},${expStr},${r.daysToExpiry},${prodStr},${r.quantity},${r.location}\n`;
+            const safeDesc = r.description ? `"${r.description.replace(/"/g, '""')}"` : '';
+            const safeLoc = r.location ? `"${r.location.replace(/"/g, '""')}"` : '';
+            csv += `${index + 1},${dateCap},${timeCap},${r.sku},${safeDesc},${expStr},${r.daysToExpiry},${prodStr},${r.quantity},${safeLoc}\n`;
         });
+        return csv;
+    }
 
-        // Descargar archivo
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement("a");
+    function getDateFilename() {
+        const d = new Date();
+        return `${d.getDate().toString().padStart(2,'0')}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getFullYear()}`;
+    }
+
+    function downloadBlob(blob, filename) {
         const url = URL.createObjectURL(blob);
-        link.setAttribute("href", url);
-        link.setAttribute("download", `Inventario_WMS_${new Date().getTime()}.csv`);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    // Descargar Excel (CSV con BOM → abre directo en Excel con doble clic)
+    document.getElementById('btn-export-csv').addEventListener('click', () => {
+        const csv = buildCSVContent();
+        if (!csv) { alert("No hay registros para exportar."); return; }
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        downloadBlob(blob, `Inventario_WMS_${getDateFilename()}.csv`);
+    });
+
+    // Compartir por Mail / WhatsApp / Drive (Web Share API)
+    document.getElementById('btn-share-csv').addEventListener('click', async () => {
+        const csv = buildCSVContent();
+        if (!csv) { alert("No hay registros para compartir."); return; }
+        const filename = `Inventario_WMS_${getDateFilename()}.csv`;
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const file = new File([blob], filename, { type: 'text/csv' });
+
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+            try {
+                await navigator.share({
+                    title: 'Inventario WMS Bodega',
+                    text: `Inventario de vencimientos del ${new Date().toLocaleDateString('es-AR')}`,
+                    files: [file]
+                });
+            } catch (err) {
+                if (err.name !== 'AbortError') downloadBlob(blob, filename);
+            }
+        } else {
+            // Fallback en PC: descarga directa
+            downloadBlob(blob, filename);
+            alert("Función de compartir no disponible en este navegador. El archivo fue descargado, adjuntalo manualmente al correo.");
+        }
+    });
+
+    // Generar y compartir PDF del Reporte FEFO
+    document.getElementById('btn-share-fefo').addEventListener('click', async () => {
+        const records = JSON.parse(localStorage.getItem('wms_records')) || [];
+        if (records.length === 0) { alert("No hay registros en el Reporte FEFO."); return; }
+
+        if (!window.jspdf) { alert("Librería PDF no disponible. Verificá tu conexión e intentá de nuevo."); return; }
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        const dateStr = new Date().toLocaleDateString('es-AR');
+        const timeStr = new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+
+        // Fondo blanco, estilo reporte profesional
+        doc.setFillColor(255, 255, 255);
+        doc.rect(0, 0, 210, 297, 'F');
+
+        // Encabezado azul
+        doc.setFillColor(30, 64, 175);
+        doc.rect(0, 0, 210, 28, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Reporte FEFO - Prioridad de Salida', 105, 12, { align: 'center' });
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Generado el ${dateStr} a las ${timeStr}`, 105, 21, { align: 'center' });
+
+        // Filtrar y ordenar igual que renderFefoTable
+        records.sort((a, b) => a.daysToExpiry - b.daysToExpiry);
+        const filteredRecords = [];
+        const uniqueSafeDates = new Set();
+        for (const r of records) {
+            if (r.daysToExpiry <= 50) {
+                filteredRecords.push(r);
+            } else {
+                uniqueSafeDates.add(r.expiryDate);
+                if (uniqueSafeDates.size <= 2) filteredRecords.push(r);
+            }
+        }
+
+        // Cabecera de tabla
+        let y = 38;
+        const cols = { x: [10, 38, 65, 85, 160, 178], headers: ['Prioridad', 'Ubicación', 'SKU', 'Descripción', 'Cant.', 'Días'] };
+        doc.setFillColor(241, 245, 249);
+        doc.rect(10, y - 5, 190, 8, 'F');
+        doc.setTextColor(71, 85, 105);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        cols.headers.forEach((h, i) => doc.text(h, cols.x[i], y));
+        y += 3;
+        doc.setDrawColor(203, 213, 225);
+        doc.line(10, y, 200, y);
+        y += 5;
+
+        // Filas
+        doc.setFont('helvetica', 'normal');
+        filteredRecords.forEach((record, idx) => {
+            if (y > 275) { doc.addPage(); y = 20; }
+
+            if (idx % 2 === 0) {
+                doc.setFillColor(248, 250, 252);
+                doc.rect(10, y - 4, 190, 7, 'F');
+            }
+
+            let label, cr, cg, cb;
+            if (record.daysToExpiry < 30)       { label = 'URGENTE ❌'; [cr,cg,cb] = [220, 38, 38]; }
+            else if (record.daysToExpiry <= 50)  { label = 'ALTO ⚠️';   [cr,cg,cb] = [217, 119, 6]; }
+            else                                 { label = 'NORMAL ✅'; [cr,cg,cb] = [5, 150, 105]; }
+
+            doc.setTextColor(cr, cg, cb);
+            doc.setFontSize(8);
+            doc.text(label, cols.x[0], y);
+
+            doc.setTextColor(30, 41, 59);
+            doc.text(String(record.location || '-'), cols.x[1], y);
+            doc.text(String(record.sku || '-'), cols.x[2], y);
+            const desc = record.description ? record.description.substring(0, 38) : '-';
+            doc.text(desc, cols.x[3], y);
+            doc.text(String(record.quantity || ''), cols.x[4], y);
+            doc.setTextColor(cr, cg, cb);
+            doc.setFont('helvetica', 'bold');
+            doc.text(String(record.daysToExpiry), cols.x[5], y);
+            doc.setFont('helvetica', 'normal');
+
+            y += 7;
+        });
+
+        // Pie de página
+        doc.setTextColor(148, 163, 184);
+        doc.setFontSize(7);
+        doc.text('WMS Control de Vencimientos en Bodega', 105, 290, { align: 'center' });
+
+        const pdfBlob = doc.output('blob');
+        const filename = `ReporteFEFO_${getDateFilename()}.pdf`;
+        const file = new File([pdfBlob], filename, { type: 'application/pdf' });
+
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+            try {
+                await navigator.share({
+                    title: 'Reporte FEFO WMS',
+                    text: `Reporte de prioridades de salida del ${dateStr}`,
+                    files: [file]
+                });
+            } catch (err) {
+                if (err.name !== 'AbortError') downloadBlob(pdfBlob, filename);
+            }
+        } else {
+            downloadBlob(pdfBlob, filename);
+            alert("Función de compartir no disponible en este navegador. El PDF fue descargado, adjuntalo manualmente al correo.");
+        }
     });
 
     // --- LIMPIAR SESIÓN ---
@@ -498,3 +644,4 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
 });
+
