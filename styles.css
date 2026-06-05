@@ -427,3 +427,50 @@ input:focus {
 .btn-share:hover {
     background-color: rgba(59, 130, 246, 0.3);
 }
+
+/* Modales Personalizados */
+.custom-modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: rgba(0,0,0,0.6);
+    z-index: 9999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+.custom-modal-content {
+    background-color: var(--card-bg);
+    border-radius: 12px;
+    padding: 20px;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    text-align: center;
+}
+.custom-modal-content h3 {
+    margin-top: 0;
+    color: var(--text-color);
+}
+.custom-modal-content p {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    margin-bottom: 20px;
+}
+.modal-input {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 1rem;
+    margin-bottom: 15px;
+    box-sizing: border-box;
+}
+.custom-modal-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+.custom-modal-actions .btn {
+    flex: 1;
+}

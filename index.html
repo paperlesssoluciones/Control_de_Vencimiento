@@ -55,7 +55,7 @@
                 </div>
 
                 <!-- Formulario -->
-                <form id="capture-form" class="capture-form">
+                <form id="capture-form" class="capture-form" autocomplete="off">
                     <div class="form-group">
                         <div style="display: flex; justify-content: space-between;">
                             <label for="sku">SKU del Producto</label>
@@ -180,6 +180,21 @@
             <!-- Mensaje de éxito/error (Toast) -->
             <div id="toast" class="toast hidden">
                 Registro guardado correctamente.
+            </div>
+
+            <!-- Custom Modals -->
+            <div id="custom-modal-overlay" class="custom-modal-overlay hidden">
+                <div class="custom-modal-content">
+                    <h3 id="custom-modal-title"></h3>
+                    <p id="custom-modal-message"></p>
+                    <div id="custom-modal-input-container" class="hidden" style="margin-top: 15px;">
+                        <input type="text" id="custom-modal-input" class="modal-input" autocomplete="off">
+                    </div>
+                    <div class="custom-modal-actions">
+                        <button id="custom-modal-cancel" class="btn btn-danger hidden">Cancelar</button>
+                        <button id="custom-modal-confirm" class="btn btn-success">Aceptar</button>
+                    </div>
+                </div>
             </div>
         </main>
 

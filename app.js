@@ -42,7 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 onScanFailure
             ).catch(err => {
                 console.error("Error iniciando escáner", err);
-                alert("No se pudo acceder a la cámara. Revisa los permisos.");
+                showCustomAlert("No se pudo acceder a la cámara. Revisa los permisos.");
                 showManualForm();
             });
         }
@@ -132,7 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (error) {
             console.error("Error parseando", error);
-            alert("Formato de código no reconocido o ilegible. Por favor, intenta de nuevo o carga los datos manualmente.");
+            showCustomAlert("Formato de código no reconocido o ilegible. Por favor, intenta de nuevo o carga los datos manualmente.");
         }
     }
 
@@ -293,18 +293,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const tbody = document.getElementById('history-tbody');
         tbody.innerHTML = '';
         
-        const records = JSON.parse(localStorage.getItem('wms_records')) || [];
+        const rawRecords = JSON.parse(localStorage.getItem('wms_records')) || [];
+        const records = groupRecords(rawRecords);
         
         if (records.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; color:var(--text-muted);">No hay registros en esta sesión</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color:var(--text-muted);">No hay registros en esta sesión</td></tr>';
             return;
         }
 
-        // Mostrar del más reciente al más antiguo, manteniendo el índice original
-        const reversedRecords = records.map((record, index) => ({ record, seq: index + 1 })).reverse();
+        // Mostrar del más reciente al más antiguo (basado en el array original mapeado, aunque el agrupado pierde un poco el orden cronológico estricto, podemos mantener el orden en el que quedaron en el mapa)
+        const reversedRecords = records.reverse();
 
-        reversedRecords.forEach(({ record, seq }) => {
+        reversedRecords.forEach((record, index) => {
             const tr = document.createElement('tr');
+            const seq = index + 1;
             
             const d = new Date(record.timestamp);
             const timeStr = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
@@ -331,50 +333,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${record.description}</td>
                 <td>${expStr}</td>
                 <td>${daysHtml}</td>
-                <td>${record.quantity}</td>
-                <td>${record.location}</td>
-                <td>
-                    <button class="btn btn-edit" data-id="${record.id}" style="padding: 0.2rem 0.4rem; font-size: 0.8rem; background: transparent; border: 1px solid var(--primary-color); color: var(--primary-color); border-radius: 4px; cursor: pointer; margin-right: 4px;">✏️</button>
-                    <button class="btn btn-delete" data-id="${record.id}" style="padding: 0.2rem 0.4rem; font-size: 0.8rem; background: transparent; border: 1px solid var(--danger); color: var(--danger); border-radius: 4px; cursor: pointer;">🗑️</button>
-                </td>
+                <td><strong>${record.quantity}</strong></td>
+                <td style="font-size: 0.85em; white-space: pre-wrap;">${record.location}</td>
             `;
             tbody.appendChild(tr);
-        });
-
-        // Eventos para botones de edición y borrado
-        document.querySelectorAll('.btn-delete').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                if(confirm("¿Seguro que deseas eliminar este registro?")) {
-                    const id = e.currentTarget.getAttribute('data-id');
-                    let currentRecords = JSON.parse(localStorage.getItem('wms_records')) || [];
-                    currentRecords = currentRecords.filter(r => r.id !== id);
-                    localStorage.setItem('wms_records', JSON.stringify(currentRecords));
-                    renderHistoryTable();
-                }
-            });
-        });
-
-        document.querySelectorAll('.btn-edit').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const id = e.currentTarget.getAttribute('data-id');
-                let currentRecords = JSON.parse(localStorage.getItem('wms_records')) || [];
-                const recordIndex = currentRecords.findIndex(r => r.id === id);
-                
-                if(recordIndex > -1) {
-                    const rec = currentRecords[recordIndex];
-                    const newQty = prompt(`Modificar Cantidad para SKU ${rec.sku}:`, rec.quantity);
-                    if(newQty === null) return; // Cancelado
-                    
-                    const newLoc = prompt(`Modificar Ubicación para SKU ${rec.sku}:`, rec.location);
-                    if(newLoc === null) return; // Cancelado
-                    
-                    if(newQty.trim() !== '' && !isNaN(newQty)) currentRecords[recordIndex].quantity = newQty;
-                    if(newLoc.trim() !== '') currentRecords[recordIndex].location = newLoc;
-                    
-                    localStorage.setItem('wms_records', JSON.stringify(currentRecords));
-                    renderHistoryTable();
-                }
-            });
         });
     }
 
@@ -384,7 +346,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!tbody) return;
         tbody.innerHTML = '';
         
-        const records = JSON.parse(localStorage.getItem('wms_records')) || [];
+        const rawRecords = JSON.parse(localStorage.getItem('wms_records')) || [];
+        const records = groupRecords(rawRecords);
         if (records.length === 0) {
             tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No hay registros</td></tr>';
             return;
@@ -450,7 +413,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Genera el contenido CSV con BOM para Excel directo
     function buildCSVContent() {
-        const records = JSON.parse(localStorage.getItem('wms_records')) || [];
+        const rawRecords = JSON.parse(localStorage.getItem('wms_records')) || [];
+        const records = groupRecords(rawRecords);
         if (records.length === 0) return null;
 
         let csv = "Secuencia,Fecha Toma,Hora Toma,SKU,Descripcion,Fecha Vencimiento,Dias para Vencer,Fecha Elaboracion,Cantidad,Ubicacion\n";
@@ -492,7 +456,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Descargar Excel (CSV con BOM → abre directo en Excel con doble clic)
     document.getElementById('btn-export-csv').addEventListener('click', () => {
         const csv = buildCSVContent();
-        if (!csv) { alert("No hay registros para exportar."); return; }
+        if (!csv) { showCustomAlert("No hay registros para exportar."); return; }
         const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
         downloadBlob(blob, `Inventario_WMS_${getDateFilename()}.csv`);
     });
@@ -500,7 +464,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Compartir por Mail / WhatsApp / Drive (Web Share API)
     document.getElementById('btn-share-csv').addEventListener('click', async () => {
         const csv = buildCSVContent();
-        if (!csv) { alert("No hay registros para compartir."); return; }
+        if (!csv) { showCustomAlert("No hay registros para compartir."); return; }
         const filename = `Inventario_WMS_${getDateFilename()}.csv`;
         const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
         const file = new File([blob], filename, { type: 'text/csv' });
@@ -524,10 +488,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Generar y compartir PDF del Reporte FEFO
     document.getElementById('btn-share-fefo').addEventListener('click', async () => {
-        const records = JSON.parse(localStorage.getItem('wms_records')) || [];
-        if (records.length === 0) { alert("No hay registros en el Reporte FEFO."); return; }
+        const rawRecords = JSON.parse(localStorage.getItem('wms_records')) || [];
+        const records = groupRecords(rawRecords);
+        if (records.length === 0) { showCustomAlert("No hay registros en el Reporte FEFO."); return; }
 
-        if (!window.jspdf) { alert("Librería PDF no disponible. Verificá tu conexión e intentá de nuevo."); return; }
+        if (!window.jspdf) { showCustomAlert("Librería PDF no disponible. Verificá tu conexión e intentá de nuevo."); return; }
 
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -635,13 +600,130 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- LIMPIAR SESIÓN ---
-    document.getElementById('btn-clear-history').addEventListener('click', () => {
-        if (confirm("¿Estás seguro de que quieres borrar todos los registros de la tablet? Asegúrate de haber exportado a Excel primero.")) {
+    document.getElementById('btn-clear-history').addEventListener('click', async () => {
+        if (await showCustomConfirm("¿Estás seguro de que quieres borrar todos los registros de la tablet? Asegúrate de haber exportado a Excel primero.")) {
             localStorage.removeItem('wms_records');
             renderHistoryTable();
-            alert("Sesión limpiada correctamente.");
+            showCustomAlert("Sesión limpiada correctamente.");
         }
     });
 
 });
+
+// --- LÓGICA DE MODALES PERSONALIZADOS ---
+function showCustomAlert(message) {
+    return new Promise((resolve) => {
+        const overlay = document.getElementById('custom-modal-overlay');
+        const titleEl = document.getElementById('custom-modal-title');
+        const msgEl = document.getElementById('custom-modal-message');
+        const btnCancel = document.getElementById('custom-modal-cancel');
+        const btnConfirm = document.getElementById('custom-modal-confirm');
+        const inputContainer = document.getElementById('custom-modal-input-container');
+
+        titleEl.innerText = "Información";
+        msgEl.innerText = message;
+        inputContainer.classList.add('hidden');
+        btnCancel.classList.add('hidden');
+        
+        btnConfirm.onclick = () => {
+            overlay.classList.add('hidden');
+            resolve();
+        };
+
+        overlay.classList.remove('hidden');
+    });
+}
+
+function showCustomConfirm(message) {
+    return new Promise((resolve) => {
+        const overlay = document.getElementById('custom-modal-overlay');
+        const titleEl = document.getElementById('custom-modal-title');
+        const msgEl = document.getElementById('custom-modal-message');
+        const btnCancel = document.getElementById('custom-modal-cancel');
+        const btnConfirm = document.getElementById('custom-modal-confirm');
+        const inputContainer = document.getElementById('custom-modal-input-container');
+
+        titleEl.innerText = "Confirmar Acción";
+        msgEl.innerText = message;
+        inputContainer.classList.add('hidden');
+        btnCancel.classList.remove('hidden');
+        
+        btnCancel.onclick = () => {
+            overlay.classList.add('hidden');
+            resolve(false);
+        };
+        btnConfirm.onclick = () => {
+            overlay.classList.add('hidden');
+            resolve(true);
+        };
+
+        overlay.classList.remove('hidden');
+    });
+}
+
+function showCustomPrompt(message, defaultValue = "") {
+    return new Promise((resolve) => {
+        const overlay = document.getElementById('custom-modal-overlay');
+        const titleEl = document.getElementById('custom-modal-title');
+        const msgEl = document.getElementById('custom-modal-message');
+        const btnCancel = document.getElementById('custom-modal-cancel');
+        const btnConfirm = document.getElementById('custom-modal-confirm');
+        const inputContainer = document.getElementById('custom-modal-input-container');
+        const inputEl = document.getElementById('custom-modal-input');
+
+        titleEl.innerText = "Ingresar Datos";
+        msgEl.innerText = message;
+        inputEl.value = defaultValue;
+        inputContainer.classList.remove('hidden');
+        btnCancel.classList.remove('hidden');
+        
+        btnCancel.onclick = () => {
+            overlay.classList.add('hidden');
+            resolve(null);
+        };
+        btnConfirm.onclick = () => {
+            overlay.classList.add('hidden');
+            resolve(inputEl.value);
+        };
+
+        overlay.classList.remove('hidden');
+        setTimeout(() => inputEl.focus(), 100);
+    });
+}
+
+// --- LÓGICA DE AGRUPAMIENTO B (SKU + Fecha) ---
+function groupRecords(records) {
+    const map = new Map();
+    records.forEach(r => {
+        const key = r.sku + "_" + r.expiryDate;
+        if (!map.has(key)) {
+            const grouped = JSON.parse(JSON.stringify(r));
+            grouped.locationMap = new Map();
+            if(r.location) {
+                grouped.locationMap.set(r.location, parseInt(r.quantity, 10));
+            }
+            grouped.quantity = parseInt(r.quantity, 10);
+            map.set(key, grouped);
+        } else {
+            const grouped = map.get(key);
+            grouped.quantity += parseInt(r.quantity, 10);
+            if(r.location) {
+                const currentQty = grouped.locationMap.get(r.location) || 0;
+                grouped.locationMap.set(r.location, currentQty + parseInt(r.quantity, 10));
+            }
+        }
+    });
+
+    const groupedArray = Array.from(map.values());
+    groupedArray.forEach(g => {
+        if (g.locationMap && g.locationMap.size > 0) {
+            let locStrings = [];
+            for (let [loc, qty] of g.locationMap) {
+                locStrings.push(`\${loc} (\${qty})`);
+            }
+            g.location = locStrings.join(", ");
+        }
+    });
+    return groupedArray;
+}
 
