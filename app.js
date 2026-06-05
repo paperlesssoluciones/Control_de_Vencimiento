@@ -335,8 +335,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${daysHtml}</td>
                 <td><strong>${record.quantity}</strong></td>
                 <td style="font-size: 0.85em; white-space: pre-wrap;">${record.location}</td>
+                <td>
+                    <button class="btn btn-delete" data-sku="${record.sku}" data-date="${record.expiryDate}" style="padding: 0.2rem 0.4rem; font-size: 0.8rem; background: transparent; border: 1px solid var(--danger); color: var(--danger); border-radius: 4px; cursor: pointer;">🗑️</button>
+                </td>
             `;
             tbody.appendChild(tr);
+        });
+
+        // Evento para borrar el grupo
+        document.querySelectorAll('.btn-delete').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                if(await showCustomConfirm("¿Seguro que deseas eliminar TODOS los registros de este producto con esta fecha de vencimiento?")) {
+                    const sku = e.currentTarget.getAttribute('data-sku');
+                    const date = e.currentTarget.getAttribute('data-date');
+                    let currentRecords = JSON.parse(localStorage.getItem('wms_records')) || [];
+                    currentRecords = currentRecords.filter(r => !(r.sku === sku && r.expiryDate === date));
+                    localStorage.setItem('wms_records', JSON.stringify(currentRecords));
+                    renderHistoryTable();
+                }
+            });
         });
     }
 
@@ -719,7 +736,7 @@ function groupRecords(records) {
         if (g.locationMap && g.locationMap.size > 0) {
             let locStrings = [];
             for (let [loc, qty] of g.locationMap) {
-                locStrings.push(`\${loc} (\${qty})`);
+                locStrings.push(`${loc} (${qty})`);
             }
             g.location = locStrings.join(", ");
         }
