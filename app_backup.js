@@ -42,7 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 onScanFailure
             ).catch(err => {
                 console.error("Error iniciando escáner", err);
-                showCustomAlert("No se pudo acceder a la cámara. Revisa los permisos.");
+                alert("No se pudo acceder a la cámara. Revisa los permisos.");
                 showManualForm();
             });
         }
@@ -114,7 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
             inputExpiryDate.value = formattedDate;
 
             // 4. Buscar descripción (efecto WOW)
-            const product = getCatalog()[sku];
+            const product = productCatalog[sku];
             const productName = product ? product.description : "Producto Desconocido";
             const descGroup = document.getElementById('desc-group');
             const descInput = document.getElementById('description');
@@ -132,7 +132,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (error) {
             console.error("Error parseando", error);
-            showCustomAlert("Formato de código no reconocido o ilegible. Por favor, intenta de nuevo o carga los datos manualmente.");
+            alert("Formato de código no reconocido o ilegible. Por favor, intenta de nuevo o carga los datos manualmente.");
         }
     }
 
@@ -148,8 +148,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const descGroup = document.getElementById('desc-group');
         const descInput = document.getElementById('description');
         
-        if (sku && getCatalog()[sku]) {
-            descInput.value = getCatalog()[sku].description;
+        if (sku && productCatalog[sku]) {
+            descInput.value = productCatalog[sku].description;
             descGroup.style.display = 'flex';
         } else {
             descGroup.style.display = 'none';
@@ -202,7 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const diffTime = expiryDateObj - captureDate;
         const daysToExpiry = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-        const product = getCatalog()[document.getElementById('sku').value];
+        const product = productCatalog[document.getElementById('sku').value];
         const shelfLife = product ? product.shelfLife : 0;
         
         // Fecha elaboración (Vencimiento - shelfLife)
@@ -293,20 +293,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const tbody = document.getElementById('history-tbody');
         tbody.innerHTML = '';
         
-        const rawRecords = JSON.parse(localStorage.getItem('wms_records')) || [];
-        const records = groupRecords(rawRecords);
+        const records = JSON.parse(localStorage.getItem('wms_records')) || [];
         
         if (records.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color:var(--text-muted);">No hay registros en esta sesión</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; color:var(--text-muted);">No hay registros en esta sesión</td></tr>';
             return;
         }
 
-        // Mostrar del más reciente al más antiguo (basado en el array original mapeado, aunque el agrupado pierde un poco el orden cronológico estricto, podemos mantener el orden en el que quedaron en el mapa)
-        const reversedRecords = records.reverse();
+        // Mostrar del más reciente al más antiguo, manteniendo el índice original
+        const reversedRecords = records.map((record, index) => ({ record, seq: index + 1 })).reverse();
 
-        reversedRecords.forEach((record, index) => {
+        reversedRecords.forEach(({ record, seq }) => {
             const tr = document.createElement('tr');
-            const seq = index + 1;
             
             const d = new Date(record.timestamp);
             const timeStr = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
@@ -333,73 +331,49 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${record.description}</td>
                 <td>${expStr}</td>
                 <td>${daysHtml}</td>
-                <td><strong>${record.quantity}</strong></td>
-                <td style="font-size: 0.85em; white-space: pre-wrap;">${record.location}</td>
+                <td>${record.quantity}</td>
+                <td>${record.location}</td>
                 <td>
-                    <button class="btn btn-edit" data-sku="${record.sku}" data-date="${record.expiryDate}" style="padding: 0.2rem 0.4rem; font-size: 0.8rem; background: transparent; border: 1px solid var(--primary-color); color: var(--primary-color); border-radius: 4px; cursor: pointer; margin-right: 4px;">✏️</button>
-                    <button class="btn btn-delete" data-sku="${record.sku}" data-date="${record.expiryDate}" style="padding: 0.2rem 0.4rem; font-size: 0.8rem; background: transparent; border: 1px solid var(--danger); color: var(--danger); border-radius: 4px; cursor: pointer;">🗑️</button>
+                    <button class="btn btn-edit" data-id="${record.id}" style="padding: 0.2rem 0.4rem; font-size: 0.8rem; background: transparent; border: 1px solid var(--primary-color); color: var(--primary-color); border-radius: 4px; cursor: pointer; margin-right: 4px;">✏️</button>
+                    <button class="btn btn-delete" data-id="${record.id}" style="padding: 0.2rem 0.4rem; font-size: 0.8rem; background: transparent; border: 1px solid var(--danger); color: var(--danger); border-radius: 4px; cursor: pointer;">🗑️</button>
                 </td>
             `;
             tbody.appendChild(tr);
         });
 
-        // Evento para borrar el grupo
+        // Eventos para botones de edición y borrado
         document.querySelectorAll('.btn-delete').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                const sku = e.currentTarget.getAttribute('data-sku');
-                const date = e.currentTarget.getAttribute('data-date');
-                if(await showCustomConfirm("¿Seguro que deseas eliminar TODOS los registros de este producto con esta fecha de vencimiento?")) {
+            btn.addEventListener('click', (e) => {
+                if(confirm("¿Seguro que deseas eliminar este registro?")) {
+                    const id = e.currentTarget.getAttribute('data-id');
                     let currentRecords = JSON.parse(localStorage.getItem('wms_records')) || [];
-                    currentRecords = currentRecords.filter(r => !(r.sku === sku && r.expiryDate === date));
+                    currentRecords = currentRecords.filter(r => r.id !== id);
                     localStorage.setItem('wms_records', JSON.stringify(currentRecords));
                     renderHistoryTable();
                 }
             });
         });
 
-        // Evento para editar/consolidar el grupo
         document.querySelectorAll('.btn-edit').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                const sku = e.currentTarget.getAttribute('data-sku');
-                const date = e.currentTarget.getAttribute('data-date');
+            btn.addEventListener('click', (e) => {
+                const id = e.currentTarget.getAttribute('data-id');
                 let currentRecords = JSON.parse(localStorage.getItem('wms_records')) || [];
+                const recordIndex = currentRecords.findIndex(r => r.id === id);
                 
-                // Buscar registros actuales que componen este grupo
-                const groupRecordsList = currentRecords.filter(r => r.sku === sku && r.expiryDate === date);
-                if (groupRecordsList.length === 0) return;
-                
-                // Calcular cantidad total actual para pre-rellenar
-                const currentTotalQty = groupRecordsList.reduce((sum, r) => sum + parseInt(r.quantity, 10), 0);
-                
-                const newQtyStr = await showCustomPrompt(`Modificar Cantidad Total para SKU ${sku}:`, currentTotalQty.toString());
-                if (newQtyStr === null) return; // Cancelado
-                const newQty = parseInt(newQtyStr, 10);
-                if (isNaN(newQty) || newQty <= 0) {
-                    showCustomAlert("Cantidad inválida.");
-                    return;
+                if(recordIndex > -1) {
+                    const rec = currentRecords[recordIndex];
+                    const newQty = prompt(`Modificar Cantidad para SKU ${rec.sku}:`, rec.quantity);
+                    if(newQty === null) return; // Cancelado
+                    
+                    const newLoc = prompt(`Modificar Ubicación para SKU ${rec.sku}:`, rec.location);
+                    if(newLoc === null) return; // Cancelado
+                    
+                    if(newQty.trim() !== '' && !isNaN(newQty)) currentRecords[recordIndex].quantity = newQty;
+                    if(newLoc.trim() !== '') currentRecords[recordIndex].location = newLoc;
+                    
+                    localStorage.setItem('wms_records', JSON.stringify(currentRecords));
+                    renderHistoryTable();
                 }
-                
-                const newLoc = await showCustomPrompt(`Ubicación para la nueva cantidad consolidada:`, groupRecordsList[0].location || '');
-                if (newLoc === null) return; // Cancelado
-
-                // Borrar los registros anteriores de este grupo
-                currentRecords = currentRecords.filter(r => !(r.sku === sku && r.expiryDate === date));
-                
-                // Crear un único registro consolidado
-                const consolidatedRecord = {
-                    id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-                    sku: sku,
-                    description: groupRecordsList[0].description,
-                    expiryDate: date,
-                    daysToExpiry: groupRecordsList[0].daysToExpiry,
-                    quantity: newQtyStr,
-                    location: newLoc,
-                    timestamp: new Date().toISOString()
-                };
-                currentRecords.push(consolidatedRecord);
-                
-                localStorage.setItem('wms_records', JSON.stringify(currentRecords));
-                renderHistoryTable();
             });
         });
     }
@@ -410,8 +384,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!tbody) return;
         tbody.innerHTML = '';
         
-        const rawRecords = JSON.parse(localStorage.getItem('wms_records')) || [];
-        const records = groupRecords(rawRecords);
+        const records = JSON.parse(localStorage.getItem('wms_records')) || [];
         if (records.length === 0) {
             tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No hay registros</td></tr>';
             return;
@@ -477,8 +450,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Genera el contenido CSV con BOM para Excel directo
     function buildCSVContent() {
-        const rawRecords = JSON.parse(localStorage.getItem('wms_records')) || [];
-        const records = groupRecords(rawRecords);
+        const records = JSON.parse(localStorage.getItem('wms_records')) || [];
         if (records.length === 0) return null;
 
         let csv = "Secuencia,Fecha Toma,Hora Toma,SKU,Descripcion,Fecha Vencimiento,Dias para Vencer,Fecha Elaboracion,Cantidad,Ubicacion\n";
@@ -520,7 +492,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Descargar Excel (CSV con BOM → abre directo en Excel con doble clic)
     document.getElementById('btn-export-csv').addEventListener('click', () => {
         const csv = buildCSVContent();
-        if (!csv) { showCustomAlert("No hay registros para exportar."); return; }
+        if (!csv) { alert("No hay registros para exportar."); return; }
         const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
         downloadBlob(blob, `Inventario_WMS_${getDateFilename()}.csv`);
     });
@@ -528,7 +500,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Compartir por Mail / WhatsApp / Drive (Web Share API)
     document.getElementById('btn-share-csv').addEventListener('click', async () => {
         const csv = buildCSVContent();
-        if (!csv) { showCustomAlert("No hay registros para compartir."); return; }
+        if (!csv) { alert("No hay registros para compartir."); return; }
         const filename = `Inventario_WMS_${getDateFilename()}.csv`;
         const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
         const file = new File([blob], filename, { type: 'text/csv' });
@@ -552,11 +524,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Generar y compartir PDF del Reporte FEFO
     document.getElementById('btn-share-fefo').addEventListener('click', async () => {
-        const rawRecords = JSON.parse(localStorage.getItem('wms_records')) || [];
-        const records = groupRecords(rawRecords);
-        if (records.length === 0) { showCustomAlert("No hay registros en el Reporte FEFO."); return; }
+        const records = JSON.parse(localStorage.getItem('wms_records')) || [];
+        if (records.length === 0) { alert("No hay registros en el Reporte FEFO."); return; }
 
-        if (!window.jspdf) { showCustomAlert("Librería PDF no disponible. Verificá tu conexión e intentá de nuevo."); return; }
+        if (!window.jspdf) { alert("Librería PDF no disponible. Verificá tu conexión e intentá de nuevo."); return; }
 
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
@@ -664,251 +635,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- LIMPIAR SESIÓN ---
-    document.getElementById('btn-clear-history').addEventListener('click', async () => {
-        if (await showCustomConfirm("¿Estás seguro de que quieres borrar todos los registros de la tablet? Asegúrate de haber exportado a Excel primero.")) {
+    document.getElementById('btn-clear-history').addEventListener('click', () => {
+        if (confirm("¿Estás seguro de que quieres borrar todos los registros de la tablet? Asegúrate de haber exportado a Excel primero.")) {
             localStorage.removeItem('wms_records');
             renderHistoryTable();
-            showCustomAlert("Sesión limpiada correctamente.");
+            alert("Sesión limpiada correctamente.");
         }
     });
 
 });
-
-// --- LÓGICA DE MODALES PERSONALIZADOS ---
-function showCustomAlert(message) {
-    return new Promise((resolve) => {
-        const overlay = document.getElementById('custom-modal-overlay');
-        const titleEl = document.getElementById('custom-modal-title');
-        const msgEl = document.getElementById('custom-modal-message');
-        const btnCancel = document.getElementById('custom-modal-cancel');
-        const btnConfirm = document.getElementById('custom-modal-confirm');
-        const inputContainer = document.getElementById('custom-modal-input-container');
-
-        titleEl.innerText = "Información";
-        msgEl.innerText = message;
-        inputContainer.classList.add('hidden');
-        btnCancel.classList.add('hidden');
-        
-        btnConfirm.onclick = () => {
-            overlay.classList.add('hidden');
-            resolve();
-        };
-
-        overlay.classList.remove('hidden');
-    });
-}
-
-function showCustomConfirm(message) {
-    return new Promise((resolve) => {
-        const overlay = document.getElementById('custom-modal-overlay');
-        const titleEl = document.getElementById('custom-modal-title');
-        const msgEl = document.getElementById('custom-modal-message');
-        const btnCancel = document.getElementById('custom-modal-cancel');
-        const btnConfirm = document.getElementById('custom-modal-confirm');
-        const inputContainer = document.getElementById('custom-modal-input-container');
-
-        titleEl.innerText = "Confirmar Acción";
-        msgEl.innerText = message;
-        inputContainer.classList.add('hidden');
-        btnCancel.classList.remove('hidden');
-        
-        btnCancel.onclick = () => {
-            overlay.classList.add('hidden');
-            resolve(false);
-        };
-        btnConfirm.onclick = () => {
-            overlay.classList.add('hidden');
-            resolve(true);
-        };
-
-        overlay.classList.remove('hidden');
-    });
-}
-
-function showCustomPrompt(message, defaultValue = "") {
-    return new Promise((resolve) => {
-        const overlay = document.getElementById('custom-modal-overlay');
-        const titleEl = document.getElementById('custom-modal-title');
-        const msgEl = document.getElementById('custom-modal-message');
-        const btnCancel = document.getElementById('custom-modal-cancel');
-        const btnConfirm = document.getElementById('custom-modal-confirm');
-        const inputContainer = document.getElementById('custom-modal-input-container');
-        const inputEl = document.getElementById('custom-modal-input');
-
-        titleEl.innerText = "Ingresar Datos";
-        msgEl.innerText = message;
-        inputEl.value = defaultValue;
-        inputContainer.classList.remove('hidden');
-        btnCancel.classList.remove('hidden');
-        
-        btnCancel.onclick = () => {
-            overlay.classList.add('hidden');
-            resolve(null);
-        };
-        btnConfirm.onclick = () => {
-            overlay.classList.add('hidden');
-            resolve(inputEl.value);
-        };
-
-        overlay.classList.remove('hidden');
-        setTimeout(() => inputEl.focus(), 100);
-    });
-}
-
-// --- LÓGICA DE AGRUPAMIENTO B (SKU + Fecha) ---
-function groupRecords(records) {
-    const map = new Map();
-    records.forEach(r => {
-        const key = r.sku + "_" + r.expiryDate;
-        if (!map.has(key)) {
-            const grouped = JSON.parse(JSON.stringify(r));
-            grouped.locationMap = new Map();
-            if(r.location) {
-                grouped.locationMap.set(r.location, parseInt(r.quantity, 10));
-            }
-            grouped.quantity = parseInt(r.quantity, 10);
-            map.set(key, grouped);
-        } else {
-            const grouped = map.get(key);
-            grouped.quantity += parseInt(r.quantity, 10);
-            if(r.location) {
-                const currentQty = grouped.locationMap.get(r.location) || 0;
-                grouped.locationMap.set(r.location, currentQty + parseInt(r.quantity, 10));
-            }
-        }
-    });
-
-    const groupedArray = Array.from(map.values());
-    groupedArray.forEach(g => {
-        if (g.locationMap && g.locationMap.size > 0) {
-            let locStrings = [];
-            for (let [loc, qty] of g.locationMap) {
-                locStrings.push(`${loc} (${qty})`);
-            }
-            g.location = locStrings.join(", ");
-        }
-    });
-    return groupedArray;
-}
-
-
-
-// ============================================================
-// --- GESTI�N DE CAT�LOGO DE SKUs ---
-// ============================================================
-
-function getCatalog() {
-    const stored = localStorage.getItem('wms_catalog');
-    if (stored) return JSON.parse(stored);
-    const migrated = {};
-    for (const [sku, data] of Object.entries(productCatalog)) {
-        migrated[sku] = { description: data.description, shelfLife: data.shelfLife };
-    }
-    localStorage.setItem('wms_catalog', JSON.stringify(migrated));
-    return migrated;
-}
-
-function saveCatalog(catalog) {
-    localStorage.setItem('wms_catalog', JSON.stringify(catalog));
-}
-
-function renderCatalogList(filter = '') {
-    const catalog = getCatalog();
-    const container = document.getElementById('catalog-list');
-    if (!container) return;
-    container.innerHTML = '';
-
-    const entries = Object.entries(catalog)
-        .filter(([sku, data]) => {
-            const q = filter.toLowerCase();
-            return sku.toLowerCase().includes(q) || data.description.toLowerCase().includes(q);
-        })
-        .sort((a, b) => a[0].localeCompare(b[0]));
-
-    if (entries.length === 0) {
-        container.innerHTML = '<p style="text-align:center;color:var(--text-secondary);">No se encontraron SKUs</p>';
-        return;
-    }
-
-    entries.forEach(([sku, data]) => {
-        const card = document.createElement('div');
-        card.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:0.7rem 0.8rem;background:var(--card-bg);border:1px solid var(--border-color);border-radius:8px;gap:0.5rem;';
-        card.innerHTML = `
-            <div style="flex:1;min-width:0;">
-                <div style="font-weight:600;font-size:0.9rem;">${sku}</div>
-                <div style="font-size:0.78rem;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${data.description}</div>
-                <div style="font-size:0.75rem;color:var(--primary-color);">Vida util: ${data.shelfLife > 0 ? data.shelfLife + ' dias' : 'Sin control'}</div>
-            </div>
-            <div style="display:flex;gap:4px;flex-shrink:0;">
-                <button data-sku="${sku}" class="cat-edit-btn" style="padding:0.25rem 0.45rem;background:transparent;border:1px solid var(--primary-color);color:var(--primary-color);border-radius:6px;cursor:pointer;font-size:0.8rem;">&#9999;&#65039;</button>
-                <button data-sku="${sku}" class="cat-del-btn" style="padding:0.25rem 0.45rem;background:transparent;border:1px solid var(--danger);color:var(--danger);border-radius:6px;cursor:pointer;font-size:0.8rem;">&#128465;&#65039;</button>
-            </div>`;
-        container.appendChild(card);
-    });
-
-    container.querySelectorAll('.cat-edit-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const sku = btn.getAttribute('data-sku');
-            const catalog = getCatalog();
-            const current = catalog[sku];
-            const newDesc = await showCustomPrompt('Descripcion para SKU ' + sku + ':', current.description);
-            if (newDesc === null) return;
-            const newLifeStr = await showCustomPrompt('Dias de vida util (0 = sin control):', current.shelfLife.toString());
-            if (newLifeStr === null) return;
-            const newLife = parseInt(newLifeStr, 10);
-            if (isNaN(newLife) || newLife < 0) { showCustomAlert('Valor invalido.'); return; }
-            catalog[sku] = { description: newDesc.trim(), shelfLife: newLife };
-            saveCatalog(catalog);
-            renderCatalogList(document.getElementById('catalog-search').value);
-        });
-    });
-
-    container.querySelectorAll('.cat-del-btn').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const sku = btn.getAttribute('data-sku');
-            const ok = await showCustomConfirm('Eliminar SKU ' + sku + ' del catalogo?');
-            if (!ok) return;
-            const catalog = getCatalog();
-            delete catalog[sku];
-            saveCatalog(catalog);
-            renderCatalogList(document.getElementById('catalog-search').value);
-        });
-    });
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-    const searchInput = document.getElementById('catalog-search');
-    if (searchInput) {
-        searchInput.addEventListener('input', () => renderCatalogList(searchInput.value));
-    }
-
-    const btnNewSku = document.getElementById('btn-new-sku');
-    if (btnNewSku) {
-        btnNewSku.addEventListener('click', async () => {
-            const sku = await showCustomPrompt('Codigo SKU nuevo:', '');
-            if (!sku || !sku.trim()) return;
-            const catalog = getCatalog();
-            if (catalog[sku.trim()]) { showCustomAlert('Ese SKU ya existe. Usa el boton de editar.'); return; }
-            const desc = await showCustomPrompt('Descripcion del producto:', '');
-            if (desc === null) return;
-            const lifeStr = await showCustomPrompt('Dias de vida util (0 = sin control):', '180');
-            if (lifeStr === null) return;
-            const life = parseInt(lifeStr, 10);
-            if (isNaN(life) || life < 0) { showCustomAlert('Valor invalido.'); return; }
-            catalog[sku.trim()] = { description: desc.trim(), shelfLife: life };
-            saveCatalog(catalog);
-            const si = document.getElementById('catalog-search');
-            renderCatalogList(si ? si.value : '');
-        });
-    }
-});
-
-document.querySelectorAll('.nav-btn[data-target="view-catalog"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-        const si = document.getElementById('catalog-search');
-        if (si) si.value = '';
-        renderCatalogList('');
-    });
-});
-
 

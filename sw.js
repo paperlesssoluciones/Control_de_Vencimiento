@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wms-bodega-v2';
+const CACHE_NAME = 'wms-bodega-v3';
 
 // Archivos locales a cachear durante la instalación
 const LOCAL_FILES = [
@@ -8,7 +8,7 @@ const LOCAL_FILES = [
     './app.js',
     './catalog.js',
     './manifest.json',
-    './icon.svg'
+    './icon-512.png'
 ];
 
 // INSTALACIÓN: guardar archivos en cache
