@@ -1,3 +1,15 @@
+// ============================================================
+// --- FUNCIONES GLOBALES DE UMBRALES FEFO ---
+// ============================================================
+function getFefoThresholds() {
+    const stored = localStorage.getItem('wms_fefo_thresholds');
+    if (stored) return JSON.parse(stored);
+    return { urgent: 30, warning: 50 };
+}
+function saveFefoThresholds(thresholds) {
+    localStorage.setItem('wms_fefo_thresholds', JSON.stringify(thresholds));
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const btnStartScan = document.getElementById('btn-start-scan');
     const btnStopScan = document.getElementById('btn-stop-scan');
@@ -11,7 +23,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Función reutilizable para iniciar el escáner ---
     function startScanner() {
-        // Limpiar campos del formulario antes de escanear
         inputSku.value = '';
         inputExpiryDate.value = '';
         document.getElementById('fefo-status').innerHTML = '';
@@ -23,7 +34,6 @@ document.addEventListener('DOMContentLoaded', () => {
         btnManualEntry.classList.remove('hidden');
 
         if (html5QrcodeScanner) {
-            // Reusar instancia existente si la hay
             html5QrcodeScanner.start(
                 { facingMode: "environment" },
                 { fps: 10, qrbox: { width: 250, height: 250 } },
@@ -48,7 +58,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Mostrar formulario manual (sin cámara)
     function showManualForm() {
         btnStartScan.classList.remove('hidden');
         btnStopScan.classList.add('hidden');
@@ -56,15 +65,12 @@ document.addEventListener('DOMContentLoaded', () => {
         inputSku.focus();
     }
 
-    // Botón principal: iniciar escáner
     btnStartScan.addEventListener('click', startScanner);
 
-    // Botón detener escáner manualmente
     btnStopScan.addEventListener('click', () => {
         stopScanner().then(() => showManualForm());
     });
 
-    // Botón "Sin etiqueta / Carga Manual" (desde dentro del escáner)
     btnManualEntry.addEventListener('click', () => {
         stopScanner().then(() => showManualForm());
     });
@@ -80,40 +86,27 @@ document.addEventListener('DOMContentLoaded', () => {
         return Promise.resolve();
     }
 
-    // productCatalog ahora se carga globalmente desde catalog.js
-
-    // Callback cuando lee un código exitosamente
     function onScanSuccess(decodedText, decodedResult) {
         stopScanner();
         console.log(`Scan result: ${decodedText}`);
         
         try {
-            // Ejemplo: 125435140513 000047 050426
-            // Posiciones reales según CSV: 
-            // 0-11: Lote/Prefijo (12 chars)
-            // 12-17: SKU (6 chars)
-            // 18-23: Fecha Vencimiento DDMMYY (6 chars)
-            
             if (decodedText.length < 24) {
                 throw new Error("Código muy corto");
             }
 
-            // 1. Extraer SKU
             const skuRaw = decodedText.substring(12, 18);
-            const sku = parseInt(skuRaw, 10).toString(); // Quitar ceros a la izquierda
+            const sku = parseInt(skuRaw, 10).toString();
             
-            // 2. Extraer Fecha (Formato original DDMMYY -> Necesitamos YYYY-MM-DD para el input type="date")
             const dateRaw = decodedText.substring(18, 24);
             const day = dateRaw.substring(0, 2);
             const month = dateRaw.substring(2, 4);
             const year = "20" + dateRaw.substring(4, 6);
             const formattedDate = `${year}-${month}-${day}`;
 
-            // 3. Asignar al formulario
             inputSku.value = sku;
             inputExpiryDate.value = formattedDate;
 
-            // 4. Buscar descripción (efecto WOW)
             const product = getCatalog()[sku];
             const productName = product ? product.description : "Producto Desconocido";
             const descGroup = document.getElementById('desc-group');
@@ -122,13 +115,8 @@ document.addEventListener('DOMContentLoaded', () => {
             descInput.value = productName;
             descGroup.style.display = 'flex';
             
-            // Actualizar estado de fechas visual
             updateFefoStatus();
-
-            // Mover el foco a cantidad
             document.getElementById('quantity').focus();
-            
-            // alert(`✅ Producto Identificado\n\nSKU: ${sku}\nProducto: ${productName}\nVencimiento: ${day}/${month}/${year}`);
 
         } catch (error) {
             console.error("Error parseando", error);
@@ -137,12 +125,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function onScanFailure(error) {
-        // html5-qrcode tira errores constantemente mientras intenta enfocar,
-        // es mejor ignorarlos hasta que encuentre algo.
-        // console.warn(`Code scan error = ${error}`);
+        // Ignorar errores de escaneo en curso
     }
 
-    // Actualizar descripción si se ingresa SKU a mano
     inputSku.addEventListener('input', (e) => {
         const sku = e.target.value;
         const descGroup = document.getElementById('desc-group');
@@ -156,7 +141,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Calcular estado FEFO en tiempo real
+    // Calcular estado FEFO en tiempo real usando umbrales configurables
     function updateFefoStatus() {
         const dateVal = inputExpiryDate.value;
         const statusDiv = document.getElementById('fefo-status');
@@ -166,6 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        const { urgent, warning } = getFefoThresholds();
         const captureDate = new Date();
         captureDate.setHours(0,0,0,0);
         const expiryDateObj = new Date(dateVal + "T12:00:00");
@@ -174,10 +160,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const diffTime = expiryDateObj - captureDate;
         const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         
-        if (days < 30) {
+        if (days < urgent) {
             statusDiv.innerHTML = `❌ NO APTO: Faltan ${days} días`;
             statusDiv.style.color = 'var(--danger)';
-        } else if (days <= 50) {
+        } else if (days <= warning) {
             statusDiv.innerHTML = `⚠️ ATENCIÓN: Faltan ${days} días`;
             statusDiv.style.color = 'var(--warning)';
         } else {
@@ -188,24 +174,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     inputExpiryDate.addEventListener('change', updateFefoStatus);
 
-    // Manejo del formulario
     form.addEventListener('submit', (e) => {
         e.preventDefault();
         
         let records = JSON.parse(localStorage.getItem('wms_records')) || [];
         
-        // Obtener fecha de toma
         const captureDate = new Date();
         const expiryDateObj = new Date(document.getElementById('expiry-date').value + "T12:00:00");
         
-        // Calcular días para vencer
         const diffTime = expiryDateObj - captureDate;
         const daysToExpiry = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
         const product = getCatalog()[document.getElementById('sku').value];
         const shelfLife = product ? product.shelfLife : 0;
         
-        // Fecha elaboración (Vencimiento - shelfLife)
         let prodDateStr = "";
         if (shelfLife > 0) {
             const prodDateObj = new Date(expiryDateObj);
@@ -214,7 +196,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const data = {
-            id: Date.now().toString(), // ID único para borrar/editar
+            id: Date.now().toString(),
             sku: document.getElementById('sku').value,
             description: product ? product.description : "Desconocido",
             expiryDate: document.getElementById('expiry-date').value,
@@ -228,32 +210,24 @@ document.addEventListener('DOMContentLoaded', () => {
         records.push(data);
         localStorage.setItem('wms_records', JSON.stringify(records));
         
-        // Actualizar la tabla si estuviera abierta
         renderHistoryTable();
 
-        console.log("Guardando registro:", data);
-        
-        // Mostrar Toast
         toast.classList.remove('hidden');
         setTimeout(() => {
             toast.classList.add('hidden');
         }, 3000);
         
-        // Limpiar formulario respetando los campos fijados
         const pinSku = document.getElementById('pin-sku').checked;
 
         if (!pinSku) {
             inputSku.value = '';
             document.getElementById('desc-group').style.display = 'none';
         }
-        // La Ubicación no se borra, a petición del usuario.
         
-        // Siempre limpiamos cantidad y fecha para la siguiente carga del mismo producto
         document.getElementById('quantity').value = '';
         inputExpiryDate.value = '';
-        document.getElementById('fefo-status').innerHTML = ''; // Limpiar estado FEFO
+        document.getElementById('fefo-status').innerHTML = '';
         
-        // ✅ Auto-reiniciar el escáner para la siguiente estiba
         startScanner();
     });
 
@@ -262,28 +236,34 @@ document.addEventListener('DOMContentLoaded', () => {
     const viewScan = document.getElementById('view-scan');
     const viewHistory = document.getElementById('view-history');
     const viewFefo = document.getElementById('view-fefo');
+    const viewCatalog = document.getElementById('view-catalog');
 
     navBtns.forEach(btn => {
         btn.addEventListener('click', () => {
-            // Actualizar botones
             navBtns.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
 
-            // Cambiar vista
             const target = btn.getAttribute('data-target');
             
             viewScan.style.display = 'none';
             viewHistory.style.display = 'none';
             if (viewFefo) viewFefo.style.display = 'none';
+            if (viewCatalog) viewCatalog.style.display = 'none';
 
             if (target === 'view-scan') {
                 viewScan.style.display = 'block';
             } else if (target === 'view-history') {
                 viewHistory.style.display = 'block';
-                renderHistoryTable(); // Renderizar al entrar
+                renderHistoryTable();
             } else if (target === 'view-fefo') {
                 viewFefo.style.display = 'block';
                 renderFefoTable();
+            } else if (target === 'view-catalog') {
+                viewCatalog.style.display = 'block';
+                renderThresholdSettings();
+                const si = document.getElementById('catalog-search');
+                if (si) si.value = '';
+                renderCatalogList('');
             }
         });
     });
@@ -301,7 +281,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Mostrar del más reciente al más antiguo (basado en el array original mapeado, aunque el agrupado pierde un poco el orden cronológico estricto, podemos mantener el orden en el que quedaron en el mapa)
+        const { urgent, warning } = getFefoThresholds();
         const reversedRecords = records.reverse();
 
         reversedRecords.forEach((record, index) => {
@@ -315,11 +295,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const [y, m, day] = record.expiryDate.split('-');
             const expStr = `${day}/${m}/${y.substring(2)}`;
             
-            // Lógica visual para la columna de Días Vencidos
             let daysHtml = '';
-            if (record.daysToExpiry < 30) {
+            if (record.daysToExpiry < urgent) {
                 daysHtml = `<span style="color: var(--danger); font-weight: bold;">${record.daysToExpiry} ❌</span>`;
-            } else if (record.daysToExpiry <= 50) {
+            } else if (record.daysToExpiry <= warning) {
                 daysHtml = `<span style="color: var(--warning); font-weight: bold;">${record.daysToExpiry} ⚠️</span>`;
             } else {
                 daysHtml = `<span style="color: var(--success); font-weight: bold;">${record.daysToExpiry} ✅</span>`;
@@ -343,7 +322,6 @@ document.addEventListener('DOMContentLoaded', () => {
             tbody.appendChild(tr);
         });
 
-        // Evento para borrar el grupo
         document.querySelectorAll('.btn-delete').forEach(btn => {
             btn.addEventListener('click', async (e) => {
                 const sku = e.currentTarget.getAttribute('data-sku');
@@ -357,22 +335,19 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        // Evento para editar/consolidar el grupo
         document.querySelectorAll('.btn-edit').forEach(btn => {
             btn.addEventListener('click', async (e) => {
                 const sku = e.currentTarget.getAttribute('data-sku');
                 const date = e.currentTarget.getAttribute('data-date');
                 let currentRecords = JSON.parse(localStorage.getItem('wms_records')) || [];
                 
-                // Buscar registros actuales que componen este grupo
                 const groupRecordsList = currentRecords.filter(r => r.sku === sku && r.expiryDate === date);
                 if (groupRecordsList.length === 0) return;
                 
-                // Calcular cantidad total actual para pre-rellenar
                 const currentTotalQty = groupRecordsList.reduce((sum, r) => sum + parseInt(r.quantity, 10), 0);
                 
                 const newQtyStr = await showCustomPrompt(`Modificar Cantidad Total para SKU ${sku}:`, currentTotalQty.toString());
-                if (newQtyStr === null) return; // Cancelado
+                if (newQtyStr === null) return;
                 const newQty = parseInt(newQtyStr, 10);
                 if (isNaN(newQty) || newQty <= 0) {
                     showCustomAlert("Cantidad inválida.");
@@ -380,12 +355,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 
                 const newLoc = await showCustomPrompt(`Ubicación para la nueva cantidad consolidada:`, groupRecordsList[0].location || '');
-                if (newLoc === null) return; // Cancelado
+                if (newLoc === null) return;
 
-                // Borrar los registros anteriores de este grupo
                 currentRecords = currentRecords.filter(r => !(r.sku === sku && r.expiryDate === date));
                 
-                // Crear un único registro consolidado
                 const consolidatedRecord = {
                     id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
                     sku: sku,
@@ -417,15 +390,15 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Ordenar por días para vencer (de menor a mayor)
+        const { urgent, warning } = getFefoThresholds();
+
         records.sort((a, b) => a.daysToExpiry - b.daysToExpiry);
 
-        // Filtrar: Queremos los que tienen <= 50, Y solo las primeras 2 fechas únicas que son > 50
         const filteredRecords = [];
         const uniqueSafeDates = new Set();
         
         for (const r of records) {
-            if (r.daysToExpiry <= 50) {
+            if (r.daysToExpiry <= warning) {
                 filteredRecords.push(r);
             } else {
                 uniqueSafeDates.add(r.expiryDate);
@@ -440,10 +413,10 @@ document.addEventListener('DOMContentLoaded', () => {
             
             let priorHTML = '';
             let daysHtml = '';
-            if (record.daysToExpiry < 30) {
+            if (record.daysToExpiry < urgent) {
                 priorHTML = '<span style="color:var(--danger);font-weight:bold;">URGENTE ❌</span>';
                 daysHtml = `<span style="color:var(--danger);font-weight:bold;">${record.daysToExpiry}</span>`;
-            } else if (record.daysToExpiry <= 50) {
+            } else if (record.daysToExpiry <= warning) {
                 priorHTML = '<span style="color:var(--warning);font-weight:bold;">ALTO ⚠️</span>';
                 daysHtml = `<span style="color:var(--warning);font-weight:bold;">${record.daysToExpiry}</span>`;
             } else {
@@ -463,7 +436,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Botón de imprimir
     const btnPrint = document.getElementById('btn-print');
     if (btnPrint) {
         btnPrint.addEventListener('click', () => {
@@ -473,9 +445,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- FUNCIONES DE EXPORTACIÓN Y COMPARTIR ---
-
-    // Genera el contenido CSV con BOM para Excel directo
+    // --- FUNCIONES DE EXPORTACIÓN ---
     function buildCSVContent() {
         const rawRecords = JSON.parse(localStorage.getItem('wms_records')) || [];
         const records = groupRecords(rawRecords);
@@ -517,7 +487,6 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
-    // Descargar Excel (CSV con BOM → abre directo en Excel con doble clic)
     document.getElementById('btn-export-csv').addEventListener('click', () => {
         const csv = buildCSVContent();
         if (!csv) { showCustomAlert("No hay registros para exportar."); return; }
@@ -525,7 +494,6 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadBlob(blob, `Inventario_WMS_${getDateFilename()}.csv`);
     });
 
-    // Compartir por Mail / WhatsApp / Drive (Web Share API)
     document.getElementById('btn-share-csv').addEventListener('click', async () => {
         const csv = buildCSVContent();
         if (!csv) { showCustomAlert("No hay registros para compartir."); return; }
@@ -544,13 +512,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (err.name !== 'AbortError') downloadBlob(blob, filename);
             }
         } else {
-            // Fallback en PC: descarga directa
             downloadBlob(blob, filename);
             alert("Función de compartir no disponible en este navegador. El archivo fue descargado, adjuntalo manualmente al correo.");
         }
     });
 
-    // Generar y compartir PDF del Reporte FEFO
     document.getElementById('btn-share-fefo').addEventListener('click', async () => {
         const rawRecords = JSON.parse(localStorage.getItem('wms_records')) || [];
         const records = groupRecords(rawRecords);
@@ -558,16 +524,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!window.jspdf) { showCustomAlert("Librería PDF no disponible. Verificá tu conexión e intentá de nuevo."); return; }
 
+        const { urgent, warning } = getFefoThresholds();
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
         const dateStr = new Date().toLocaleDateString('es-AR');
         const timeStr = new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
 
-        // Fondo blanco, estilo reporte profesional
         doc.setFillColor(255, 255, 255);
         doc.rect(0, 0, 210, 297, 'F');
 
-        // Encabezado azul
         doc.setFillColor(30, 64, 175);
         doc.rect(0, 0, 210, 28, 'F');
         doc.setTextColor(255, 255, 255);
@@ -578,12 +543,11 @@ document.addEventListener('DOMContentLoaded', () => {
         doc.setFont('helvetica', 'normal');
         doc.text(`Generado el ${dateStr} a las ${timeStr}`, 105, 21, { align: 'center' });
 
-        // Filtrar y ordenar igual que renderFefoTable
         records.sort((a, b) => a.daysToExpiry - b.daysToExpiry);
         const filteredRecords = [];
         const uniqueSafeDates = new Set();
         for (const r of records) {
-            if (r.daysToExpiry <= 50) {
+            if (r.daysToExpiry <= warning) {
                 filteredRecords.push(r);
             } else {
                 uniqueSafeDates.add(r.expiryDate);
@@ -591,7 +555,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // Cabecera de tabla
         let y = 38;
         const cols = { x: [10, 38, 65, 85, 160, 178], headers: ['Prioridad', 'Ubicación', 'SKU', 'Descripción', 'Cant.', 'Días'] };
         doc.setFillColor(241, 245, 249);
@@ -605,7 +568,6 @@ document.addEventListener('DOMContentLoaded', () => {
         doc.line(10, y, 200, y);
         y += 5;
 
-        // Filas
         doc.setFont('helvetica', 'normal');
         filteredRecords.forEach((record, idx) => {
             if (y > 275) { doc.addPage(); y = 20; }
@@ -616,9 +578,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             let label, cr, cg, cb;
-            if (record.daysToExpiry < 30)       { label = 'URGENTE ❌'; [cr,cg,cb] = [220, 38, 38]; }
-            else if (record.daysToExpiry <= 50)  { label = 'ALTO ⚠️';   [cr,cg,cb] = [217, 119, 6]; }
-            else                                 { label = 'NORMAL ✅'; [cr,cg,cb] = [5, 150, 105]; }
+            if (record.daysToExpiry < urgent)       { label = 'URGENTE ❌'; [cr,cg,cb] = [220, 38, 38]; }
+            else if (record.daysToExpiry <= warning)  { label = 'ALTO ⚠️';   [cr,cg,cb] = [217, 119, 6]; }
+            else                                      { label = 'NORMAL ✅'; [cr,cg,cb] = [5, 150, 105]; }
 
             doc.setTextColor(cr, cg, cb);
             doc.setFontSize(8);
@@ -638,7 +600,6 @@ document.addEventListener('DOMContentLoaded', () => {
             y += 7;
         });
 
-        // Pie de página
         doc.setTextColor(148, 163, 184);
         doc.setFontSize(7);
         doc.text('WMS Control de Vencimientos en Bodega', 105, 290, { align: 'center' });
@@ -672,9 +633,56 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // --- CATÁLOGO: buscar y agregar ---
+    const searchInput = document.getElementById('catalog-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', () => renderCatalogList(searchInput.value));
+    }
+
+    const btnNewSku = document.getElementById('btn-new-sku');
+    if (btnNewSku) {
+        btnNewSku.addEventListener('click', async () => {
+            const sku = await showCustomPrompt('Código SKU nuevo:', '');
+            if (!sku || !sku.trim()) return;
+            const catalog = getCatalog();
+            if (catalog[sku.trim()]) { showCustomAlert('Ese SKU ya existe. Usa el botón de editar.'); return; }
+            const desc = await showCustomPrompt('Descripción del producto:', '');
+            if (desc === null) return;
+            const lifeStr = await showCustomPrompt('Días de vida útil (0 = sin control):', '180');
+            if (lifeStr === null) return;
+            const life = parseInt(lifeStr, 10);
+            if (isNaN(life) || life < 0) { showCustomAlert('Valor inválido.'); return; }
+            catalog[sku.trim()] = { description: desc.trim(), shelfLife: life };
+            saveCatalog(catalog);
+            const si = document.getElementById('catalog-search');
+            renderCatalogList(si ? si.value : '');
+        });
+    }
+
+    // --- UMBRALES: guardar ---
+    const btnSaveThresholds = document.getElementById('btn-save-thresholds');
+    if (btnSaveThresholds) {
+        btnSaveThresholds.addEventListener('click', async () => {
+            const urgentVal = parseInt(document.getElementById('threshold-urgent').value, 10);
+            const warningVal = parseInt(document.getElementById('threshold-warning').value, 10);
+            if (isNaN(urgentVal) || isNaN(warningVal) || urgentVal < 1 || warningVal < 1) {
+                showCustomAlert('Los valores deben ser números mayores a 0.');
+                return;
+            }
+            if (urgentVal >= warningVal) {
+                showCustomAlert('El límite URGENTE debe ser menor al límite ATENCIÓN.');
+                return;
+            }
+            saveFefoThresholds({ urgent: urgentVal, warning: warningVal });
+            showCustomAlert(`✅ Umbrales guardados:\n❌ URGENTE: menos de ${urgentVal} días\n⚠️ ATENCIÓN: entre ${urgentVal} y ${warningVal} días\n✅ OK: más de ${warningVal} días`);
+        });
+    }
+
 });
 
-// --- LÓGICA DE MODALES PERSONALIZADOS ---
+// ============================================================
+// --- MODALES PERSONALIZADOS ---
+// ============================================================
 function showCustomAlert(message) {
     return new Promise((resolve) => {
         const overlay = document.getElementById('custom-modal-overlay');
@@ -755,7 +763,9 @@ function showCustomPrompt(message, defaultValue = "") {
     });
 }
 
-// --- LÓGICA DE AGRUPAMIENTO B (SKU + Fecha) ---
+// ============================================================
+// --- AGRUPAMIENTO (SKU + Fecha) ---
+// ============================================================
 function groupRecords(records) {
     const map = new Map();
     records.forEach(r => {
@@ -791,12 +801,9 @@ function groupRecords(records) {
     return groupedArray;
 }
 
-
-
 // ============================================================
-// --- GESTI�N DE CAT�LOGO DE SKUs ---
+// --- GESTIÓN DE CATÁLOGO DE SKUs ---
 // ============================================================
-
 function getCatalog() {
     const stored = localStorage.getItem('wms_catalog');
     if (stored) return JSON.parse(stored);
@@ -810,6 +817,14 @@ function getCatalog() {
 
 function saveCatalog(catalog) {
     localStorage.setItem('wms_catalog', JSON.stringify(catalog));
+}
+
+function renderThresholdSettings() {
+    const { urgent, warning } = getFefoThresholds();
+    const urgentInput = document.getElementById('threshold-urgent');
+    const warningInput = document.getElementById('threshold-warning');
+    if (urgentInput) urgentInput.value = urgent;
+    if (warningInput) warningInput.value = warning;
 }
 
 function renderCatalogList(filter = '') {
@@ -826,21 +841,21 @@ function renderCatalogList(filter = '') {
         .sort((a, b) => a[0].localeCompare(b[0]));
 
     if (entries.length === 0) {
-        container.innerHTML = '<p style="text-align:center;color:var(--text-secondary);">No se encontraron SKUs</p>';
+        container.innerHTML = '<p style="text-align:center;color:var(--text-muted);">No se encontraron SKUs</p>';
         return;
     }
 
     entries.forEach(([sku, data]) => {
         const card = document.createElement('div');
-        card.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:0.7rem 0.8rem;background:var(--card-bg);border:1px solid var(--border-color);border-radius:8px;gap:0.5rem;';
+        card.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:0.7rem 0.8rem;background:var(--bg-dark);border:1px solid var(--border-color);border-radius:8px;gap:0.5rem;';
         card.innerHTML = `
             <div style="flex:1;min-width:0;">
                 <div style="font-weight:600;font-size:0.9rem;">${sku}</div>
-                <div style="font-size:0.78rem;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${data.description}</div>
-                <div style="font-size:0.75rem;color:var(--primary-color);">Vida util: ${data.shelfLife > 0 ? data.shelfLife + ' dias' : 'Sin control'}</div>
+                <div style="font-size:0.78rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${data.description}</div>
+                <div style="font-size:0.75rem;color:var(--primary);">Vida útil: ${data.shelfLife > 0 ? data.shelfLife + ' días' : 'Sin control'}</div>
             </div>
             <div style="display:flex;gap:4px;flex-shrink:0;">
-                <button data-sku="${sku}" class="cat-edit-btn" style="padding:0.25rem 0.45rem;background:transparent;border:1px solid var(--primary-color);color:var(--primary-color);border-radius:6px;cursor:pointer;font-size:0.8rem;">&#9999;&#65039;</button>
+                <button data-sku="${sku}" class="cat-edit-btn" style="padding:0.25rem 0.45rem;background:transparent;border:1px solid var(--primary);color:var(--primary);border-radius:6px;cursor:pointer;font-size:0.8rem;">&#9999;&#65039;</button>
                 <button data-sku="${sku}" class="cat-del-btn" style="padding:0.25rem 0.45rem;background:transparent;border:1px solid var(--danger);color:var(--danger);border-radius:6px;cursor:pointer;font-size:0.8rem;">&#128465;&#65039;</button>
             </div>`;
         container.appendChild(card);
@@ -851,12 +866,12 @@ function renderCatalogList(filter = '') {
             const sku = btn.getAttribute('data-sku');
             const catalog = getCatalog();
             const current = catalog[sku];
-            const newDesc = await showCustomPrompt('Descripcion para SKU ' + sku + ':', current.description);
+            const newDesc = await showCustomPrompt('Descripción para SKU ' + sku + ':', current.description);
             if (newDesc === null) return;
-            const newLifeStr = await showCustomPrompt('Dias de vida util (0 = sin control):', current.shelfLife.toString());
+            const newLifeStr = await showCustomPrompt('Días de vida útil (0 = sin control):', current.shelfLife.toString());
             if (newLifeStr === null) return;
             const newLife = parseInt(newLifeStr, 10);
-            if (isNaN(newLife) || newLife < 0) { showCustomAlert('Valor invalido.'); return; }
+            if (isNaN(newLife) || newLife < 0) { showCustomAlert('Valor inválido.'); return; }
             catalog[sku] = { description: newDesc.trim(), shelfLife: newLife };
             saveCatalog(catalog);
             renderCatalogList(document.getElementById('catalog-search').value);
@@ -866,7 +881,7 @@ function renderCatalogList(filter = '') {
     container.querySelectorAll('.cat-del-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
             const sku = btn.getAttribute('data-sku');
-            const ok = await showCustomConfirm('Eliminar SKU ' + sku + ' del catalogo?');
+            const ok = await showCustomConfirm('¿Eliminar SKU ' + sku + ' del catálogo?');
             if (!ok) return;
             const catalog = getCatalog();
             delete catalog[sku];
@@ -875,40 +890,3 @@ function renderCatalogList(filter = '') {
         });
     });
 }
-
-document.addEventListener('DOMContentLoaded', () => {
-    const searchInput = document.getElementById('catalog-search');
-    if (searchInput) {
-        searchInput.addEventListener('input', () => renderCatalogList(searchInput.value));
-    }
-
-    const btnNewSku = document.getElementById('btn-new-sku');
-    if (btnNewSku) {
-        btnNewSku.addEventListener('click', async () => {
-            const sku = await showCustomPrompt('Codigo SKU nuevo:', '');
-            if (!sku || !sku.trim()) return;
-            const catalog = getCatalog();
-            if (catalog[sku.trim()]) { showCustomAlert('Ese SKU ya existe. Usa el boton de editar.'); return; }
-            const desc = await showCustomPrompt('Descripcion del producto:', '');
-            if (desc === null) return;
-            const lifeStr = await showCustomPrompt('Dias de vida util (0 = sin control):', '180');
-            if (lifeStr === null) return;
-            const life = parseInt(lifeStr, 10);
-            if (isNaN(life) || life < 0) { showCustomAlert('Valor invalido.'); return; }
-            catalog[sku.trim()] = { description: desc.trim(), shelfLife: life };
-            saveCatalog(catalog);
-            const si = document.getElementById('catalog-search');
-            renderCatalogList(si ? si.value : '');
-        });
-    }
-});
-
-document.querySelectorAll('.nav-btn[data-target="view-catalog"]').forEach(btn => {
-    btn.addEventListener('click', () => {
-        const si = document.getElementById('catalog-search');
-        if (si) si.value = '';
-        renderCatalogList('');
-    });
-});
-
-
