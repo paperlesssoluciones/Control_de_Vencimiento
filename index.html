@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Control de Vencimiento</title>
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#3b82f6">
+    <meta name="theme-color" content="#F40009">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Control de Vencimiento">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -18,13 +18,12 @@
 <body>
     <div class="app-container">
         <header class="app-header">
+            <button class="hamburger-btn" aria-label="Menú">☰</button>
             <div class="logo-container">
-                <div class="logo-icon"><img src="icon-512.png" width="32" height="32" style="border-radius:6px; object-fit: cover;"></div>
                 <h1>Control de Vencimiento</h1>
             </div>
             <div class="user-info">
-                <span class="role-badge">Bodega</span>
-                <span class="user-avatar">👤</span>
+                <button class="user-btn" aria-label="Usuario">👤</button>
             </div>
         </header>
 
@@ -94,16 +93,21 @@
 
             <!-- VISTA DE HISTORIAL -->
             <section id="view-history" class="action-card" style="display: none;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                    <h2>Registros de Hoy</h2>
-                    <div style="display: flex; gap: 8px;">
-                        <button id="btn-export-csv" class="btn btn-success" style="padding: 0.5rem 0.8rem; font-size: 0.85rem;">
-                            📥 Excel
-                        </button>
-                        <button id="btn-share-csv" class="btn btn-share" style="padding: 0.5rem 0.8rem; font-size: 0.85rem;">
-                            📧 Enviar
-                        </button>
-                    </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                    <h2>
+                        <span class="card-icon">📅</span> Registros de Hoy
+                    </h2>
+                    <span class="realtime-badge">
+                        <span class="realtime-dot"></span> Tiempo Real
+                    </span>
+                </div>
+                <div style="display: flex; gap: 8px; margin-bottom: 14px;">
+                    <button id="btn-export-csv" class="btn btn-success" style="width: auto; padding: 9px 16px; font-size: 13px;">
+                        📊 Excel
+                    </button>
+                    <button id="btn-share-csv" class="btn btn-share" style="width: auto; padding: 9px 16px; font-size: 13px;">
+                        ▶ Enviar
+                    </button>
                 </div>
                 
                 <div class="table-responsive">
@@ -230,19 +234,19 @@
         <!-- Barra de Navegación Inferior -->
         <nav class="bottom-nav no-print">
             <button class="nav-btn active" data-target="view-scan">
-                <span class="nav-icon">📷</span>
+                <span class="nav-icon">▦</span>
                 <span>Escanear</span>
             </button>
             <button class="nav-btn" data-target="view-history">
-                <span class="nav-icon">📋</span>
+                <span class="nav-icon">🕐</span>
                 <span>Historial</span>
             </button>
             <button class="nav-btn" data-target="view-fefo">
-                <span class="nav-icon">🚨</span>
+                <span class="nav-icon">☰</span>
                 <span>Reporte FEFO</span>
             </button>
             <button class="nav-btn" data-target="view-catalog">
-                <span class="nav-icon">📦</span>
+                <span class="nav-icon">📖</span>
                 <span>Catálogo</span>
             </button>
         </nav>
