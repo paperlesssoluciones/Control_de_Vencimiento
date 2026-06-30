@@ -11,9 +11,7 @@
     <meta name="apple-mobile-web-app-title" content="Control de Vencimiento">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
-    <!-- Carga de html5-qrcode para el escáner -->
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-    <!-- jsPDF para generar PDFs -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="catalog.js"></script>
 </head>
@@ -36,7 +34,6 @@
                 <h2>Toma de Vencimientos</h2>
                 <p class="subtitle">Escanea la etiqueta o ingresa el código manualmente.</p>
 
-                <!-- Escáner UI -->
                 <div id="reader-container" class="scanner-container">
                     <div id="reader"></div>
                     <button id="btn-start-scan" class="btn btn-primary">
@@ -54,7 +51,6 @@
                     <span>O carga manual</span>
                 </div>
 
-                <!-- Formulario -->
                 <form id="capture-form" class="capture-form" autocomplete="off">
                     <div class="form-group">
                         <div style="display: flex; justify-content: space-between;">
@@ -126,9 +122,7 @@
                                 <th>Acciones</th>
                             </tr>
                         </thead>
-                        <tbody id="history-tbody">
-                            <!-- Los registros se inyectarán aquí -->
-                        </tbody>
+                        <tbody id="history-tbody"></tbody>
                     </table>
                 </div>
 
@@ -167,9 +161,7 @@
                                 <th>Días Venc.</th>
                             </tr>
                         </thead>
-                        <tbody id="fefo-tbody">
-                            <!-- Los registros se inyectarán aquí ordenados por FEFO -->
-                        </tbody>
+                        <tbody id="fefo-tbody"></tbody>
                     </table>
                 </div>
             </section>
@@ -181,13 +173,42 @@
 
             <!-- VISTA DE CATÁLOGO DE SKUs -->
             <section id="view-catalog" class="action-card" style="display: none;">
+
+                <!-- BLOQUE: Configuración de umbrales FEFO -->
+                <div style="margin-bottom: 1.5rem; padding: 1rem; background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.25); border-radius: 12px;">
+                    <h3 style="margin-bottom: 0.25rem; font-size: 1rem; color: var(--text-main);">⚙️ Días aptos para consumo</h3>
+                    <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.9rem;">
+                        Define cuántos días faltan para vencer para que un producto sea URGENTE o ATENCIÓN.
+                    </p>
+                    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.9rem;">
+                        <div style="flex: 1; min-width: 120px;">
+                            <label style="font-size: 0.78rem; font-weight: 600; color: var(--danger); display: block; margin-bottom: 4px;">❌ URGENTE — menos de:</label>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <input type="number" id="threshold-urgent" min="1" max="365" style="width: 80px; text-align: center; font-size: 1.1rem; font-weight: 700; padding: 8px;">
+                                <span style="color: var(--text-muted); font-size: 0.85rem;">días</span>
+                            </div>
+                        </div>
+                        <div style="flex: 1; min-width: 120px;">
+                            <label style="font-size: 0.78rem; font-weight: 600; color: var(--warning); display: block; margin-bottom: 4px;">⚠️ ATENCIÓN — entre límites:</label>
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <input type="number" id="threshold-warning" min="1" max="365" style="width: 80px; text-align: center; font-size: 1.1rem; font-weight: 700; padding: 8px;">
+                                <span style="color: var(--text-muted); font-size: 0.85rem;">días</span>
+                            </div>
+                        </div>
+                    </div>
+                    <button id="btn-save-thresholds" class="btn btn-primary" style="padding: 0.55rem 1rem; font-size: 0.88rem; width: auto;">
+                        💾 Guardar umbrales
+                    </button>
+                </div>
+
+                <!-- BLOQUE: Lista de SKUs -->
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                    <h2>Catálogo de SKUs</h2>
-                    <button id="btn-new-sku" class="btn btn-success" style="padding: 0.5rem 0.8rem; font-size: 0.85rem;">➕ Nuevo SKU</button>
+                    <h2 style="font-size: 1.1rem;">Catálogo de SKUs</h2>
+                    <button id="btn-new-sku" class="btn btn-success" style="padding: 0.5rem 0.8rem; font-size: 0.85rem; width: auto;">➕ Nuevo SKU</button>
                 </div>
                 <input type="text" id="catalog-search" placeholder="🔍 Buscar por SKU o descripción..." autocomplete="off"
-                    style="width:100%; padding:0.6rem 0.8rem; border-radius:8px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-primary); font-size:0.9rem; margin-bottom:1rem; box-sizing:border-box;">
-                <div id="catalog-list" style="display:flex; flex-direction:column; gap:0.5rem; max-height:60vh; overflow-y:auto;"></div>
+                    style="width:100%; padding:0.6rem 0.8rem; border-radius:8px; border:1px solid var(--border-color); background:var(--input-bg); color:var(--text-main); font-size:0.9rem; margin-bottom:1rem; box-sizing:border-box;">
+                <div id="catalog-list" style="display:flex; flex-direction:column; gap:0.5rem; max-height:55vh; overflow-y:auto;"></div>
             </section>
 
             <!-- Custom Modals -->
@@ -229,7 +250,6 @@
 
     <script src="app.js"></script>
     <script>
-        // Registrar Service Worker para funcionamiento offline
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('./sw.js')
