@@ -498,101 +498,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    document.getElementById('btn-share-fefo').addEventListener('click', async () => {
-        const rawRecords = JSON.parse(localStorage.getItem('wms_records')) || [];
-        const records = groupRecords(rawRecords);
-        if (records.length === 0) { showCustomAlert("No hay registros en el Reporte FEFO."); return; }
-
+    document.getElementById('btn-download-fefo').addEventListener('click', () => {
         if (!window.jspdf) { showCustomAlert("Librería PDF no disponible. Verificá tu conexión e intentá de nuevo."); return; }
-
-        const { urgent, warning } = getFefoThresholds();
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-        const dateStr = new Date().toLocaleDateString('es-AR');
-        const timeStr = new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
-
-        doc.setFillColor(255, 255, 255);
-        doc.rect(0, 0, 210, 297, 'F');
-
-        doc.setFillColor(30, 64, 175);
-        doc.rect(0, 0, 210, 28, 'F');
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(14);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Reporte FEFO - Prioridad de Salida', 105, 12, { align: 'center' });
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`Generado el ${dateStr} a las ${timeStr}`, 105, 21, { align: 'center' });
-
-        records.sort((a, b) => a.daysToExpiry - b.daysToExpiry);
-        const filteredRecords = [];
-        const uniqueSafeDates = new Set();
-        for (const r of records) {
-            if (r.daysToExpiry <= warning) {
-                filteredRecords.push(r);
-            } else {
-                uniqueSafeDates.add(r.expiryDate);
-                if (uniqueSafeDates.size <= 2) filteredRecords.push(r);
-            }
-        }
-
-        let y = 38;
-        const cols = { x: [10, 38, 65, 85, 160, 178], headers: ['Prioridad', 'Ubicación', 'SKU', 'Descripción', 'Cant.', 'Días'] };
-        doc.setFillColor(241, 245, 249);
-        doc.rect(10, y - 5, 190, 8, 'F');
-        doc.setTextColor(71, 85, 105);
-        doc.setFontSize(8);
-        doc.setFont('helvetica', 'bold');
-        cols.headers.forEach((h, i) => doc.text(h, cols.x[i], y));
-        y += 3;
-        doc.setDrawColor(203, 213, 225);
-        doc.line(10, y, 200, y);
-        y += 5;
-
-        doc.setFont('helvetica', 'normal');
-        filteredRecords.forEach((record, idx) => {
-            if (y > 275) { doc.addPage(); y = 20; }
-
-            if (idx % 2 === 0) {
-                doc.setFillColor(248, 250, 252);
-                doc.rect(10, y - 4, 190, 7, 'F');
-            }
-
-            let label, cr, cg, cb;
-            if (record.daysToExpiry < urgent)       { label = 'URGENTE ❌'; [cr,cg,cb] = [220, 38, 38]; }
-            else if (record.daysToExpiry <= warning)  { label = 'ALTO ⚠️';   [cr,cg,cb] = [217, 119, 6]; }
-            else                                      { label = 'NORMAL ✅'; [cr,cg,cb] = [5, 150, 105]; }
-
-            doc.setTextColor(cr, cg, cb);
-            doc.setFontSize(8);
-            doc.text(label, cols.x[0], y);
-
-            doc.setTextColor(30, 41, 59);
-            doc.text(String(record.location || '-'), cols.x[1], y);
-            doc.text(String(record.sku || '-'), cols.x[2], y);
-            const desc = record.description ? record.description.substring(0, 38) : '-';
-            doc.text(desc, cols.x[3], y);
-            doc.text(String(record.quantity || ''), cols.x[4], y);
-            doc.setTextColor(cr, cg, cb);
-            doc.setFont('helvetica', 'bold');
-            doc.text(String(record.daysToExpiry), cols.x[5], y);
-            doc.setFont('helvetica', 'normal');
-
-            y += 7;
-        });
-
-        doc.setTextColor(148, 163, 184);
-        doc.setFontSize(7);
-        doc.text('WMS Control de Vencimientos en Bodega', 105, 290, { align: 'center' });
-
-        const pdfBlob = doc.output('blob');
+        const doc = buildFefoPDF();
+        if (!doc) { showCustomAlert("No hay registros en el Reporte FEFO."); return; }
         const filename = `ReporteFEFO_${getDateFilename()}.pdf`;
+        downloadBlob(doc.output('blob'), filename);
+    });
+
+    document.getElementById('btn-share-fefo').addEventListener('click', async () => {
+        if (!window.jspdf) { showCustomAlert("Librería PDF no disponible. Verificá tu conexión e intentá de nuevo."); return; }
+        const doc = buildFefoPDF();
+        if (!doc) { showCustomAlert("No hay registros en el Reporte FEFO."); return; }
+        const dateStr = new Date().toLocaleDateString('es-AR');
+        const filename = `ReporteFEFO_${getDateFilename()}.pdf`;
+        const pdfBlob = doc.output('blob');
         const file = new File([pdfBlob], filename, { type: 'application/pdf' });
 
         if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
             try {
                 await navigator.share({
-                    title: 'Reporte FEFO WMS',
+                    title: 'Reporte FEFO — Control de Vencimiento',
                     text: `Reporte de prioridades de salida del ${dateStr}`,
                     files: [file]
                 });
@@ -601,7 +527,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } else {
             downloadBlob(pdfBlob, filename);
-            alert("Función de compartir no disponible en este navegador. El PDF fue descargado, adjuntalo manualmente al correo.");
+            showCustomAlert("Función de compartir no disponible en este navegador. El PDF fue descargado, adjuntalo manualmente al correo.");
         }
     });
 
@@ -853,6 +779,186 @@ function showCustomPrompt(message, defaultValue = "") {
         overlay.classList.remove('hidden');
         setTimeout(() => inputEl.focus(), 100);
     });
+}
+
+// ============================================================
+// --- GENERADOR DE PDF FEFO — ESTILO FEMSA ---
+// ============================================================
+function buildFefoPDF() {
+    const rawRecords = JSON.parse(localStorage.getItem('wms_records')) || [];
+    const records = groupRecords(rawRecords);
+    if (records.length === 0) return null;
+    if (!window.jspdf) return null;
+
+    const { urgent, warning } = getFefoThresholds();
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const dateStr = new Date().toLocaleDateString('es-AR');
+    const timeStr = new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+
+    // --- FONDO BLANCO ---
+    doc.setFillColor(255, 255, 255);
+    doc.rect(0, 0, 210, 297, 'F');
+
+    // --- HEADER ROJO FEMSA ---
+    doc.setFillColor(244, 0, 9);
+    doc.rect(0, 0, 210, 36, 'F');
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text('CONTROL DE VENCIMIENTO', 105, 13, { align: 'center' });
+
+    doc.setDrawColor(255, 255, 255);
+    doc.setLineWidth(0.3);
+    doc.line(20, 17, 190, 17);
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Reporte FEFO \u2014 Prioridades de Salida', 105, 24, { align: 'center' });
+
+    doc.setFontSize(7.5);
+    doc.text('Generado el ' + dateStr + ' a las ' + timeStr, 105, 32, { align: 'center' });
+
+    // --- BANDA DE STATS ---
+    records.sort((a, b) => a.daysToExpiry - b.daysToExpiry);
+    const filteredRecords = [];
+    const uniqueSafeDates = new Set();
+    for (const r of records) {
+        if (r.daysToExpiry <= warning) {
+            filteredRecords.push(r);
+        } else {
+            uniqueSafeDates.add(r.expiryDate);
+            if (uniqueSafeDates.size <= 2) filteredRecords.push(r);
+        }
+    }
+
+    const urgentCount = filteredRecords.filter(r => r.daysToExpiry < urgent).length;
+    const warnCount   = filteredRecords.filter(r => r.daysToExpiry >= urgent && r.daysToExpiry <= warning).length;
+    const normalCount = filteredRecords.filter(r => r.daysToExpiry > warning).length;
+
+    doc.setFillColor(255, 245, 245);
+    doc.rect(0, 36, 210, 16, 'F');
+    doc.setDrawColor(244, 0, 9);
+    doc.setLineWidth(0.4);
+    doc.line(0, 52, 210, 52);
+
+    const statsData = [
+        { label: 'URGENTE',  count: urgentCount, color: [244, 0, 9] },
+        { label: 'ATENCION', count: warnCount,   color: [230, 126, 34] },
+        { label: 'NORMAL',   count: normalCount, color: [39, 174, 96] },
+        { label: 'TOTAL',    count: filteredRecords.length, color: [30, 41, 59] }
+    ];
+    statsData.forEach(function(s, i) {
+        var sx = 18 + i * 50;
+        doc.setTextColor(s.color[0], s.color[1], s.color[2]);
+        doc.setFontSize(15);
+        doc.setFont('helvetica', 'bold');
+        doc.text(String(s.count), sx, 46);
+        doc.setFontSize(6.5);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(110, 110, 110);
+        doc.text(s.label, sx, 50.5);
+    });
+
+    // --- ENCABEZADO DE TABLA ---
+    var y = 62;
+    var colX = [12, 42, 63, 128, 163, 181];
+    var colHeaders = ['PRIORIDAD', 'SKU', 'DESCRIPCION', 'UBICACION', 'CANT.', 'DIAS'];
+
+    doc.setFillColor(30, 41, 59);
+    doc.rect(10, y - 5.5, 190, 7.5, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(7.5);
+    doc.setFont('helvetica', 'bold');
+    colHeaders.forEach(function(h, i) { doc.text(h, colX[i], y); });
+    y += 5;
+
+    // --- FILAS ---
+    doc.setFont('helvetica', 'normal');
+    filteredRecords.forEach(function(record, idx) {
+        if (y > 272) {
+            doc.addPage();
+            doc.setFillColor(255, 255, 255);
+            doc.rect(0, 0, 210, 297, 'F');
+            y = 20;
+            doc.setFillColor(30, 41, 59);
+            doc.rect(10, y - 5.5, 190, 7.5, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(7.5);
+            doc.setFont('helvetica', 'bold');
+            colHeaders.forEach(function(h, i) { doc.text(h, colX[i], y); });
+            y += 5;
+            doc.setFont('helvetica', 'normal');
+        }
+
+        // Fondo alternado
+        if (idx % 2 === 0) {
+            doc.setFillColor(250, 250, 250);
+            doc.rect(10, y - 4, 190, 7.5, 'F');
+        }
+
+        // Estado y colores
+        var label, cr, cg, cb;
+        if (record.daysToExpiry < urgent) {
+            label = 'URGENTE'; cr = 244; cg = 0; cb = 9;
+        } else if (record.daysToExpiry <= warning) {
+            label = 'ATENCION'; cr = 230; cg = 126; cb = 34;
+        } else {
+            label = 'NORMAL'; cr = 39; cg = 174; cb = 96;
+        }
+
+        // Badge de estado (pastilla de color)
+        doc.setFillColor(cr, cg, cb);
+        doc.roundedRect(colX[0] - 1, y - 4, 26, 5.5, 1.2, 1.2, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'bold');
+        doc.text(label, colX[0] + 12, y, { align: 'center' });
+
+        // SKU
+        doc.setTextColor(30, 41, 59);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.text(String(record.sku || '-'), colX[1], y);
+
+        // Descripción
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        var desc = record.description ? record.description.substring(0, 30) : '-';
+        doc.text(desc, colX[2], y);
+
+        // Ubicación
+        var loc = record.location ? record.location.substring(0, 16) : '-';
+        doc.text(loc, colX[3], y);
+
+        // Cantidad
+        doc.setFont('helvetica', 'bold');
+        doc.text(String(record.quantity || ''), colX[4], y);
+
+        // Días
+        doc.setTextColor(cr, cg, cb);
+        doc.setFontSize(9);
+        doc.text(String(record.daysToExpiry), colX[5], y);
+
+        // Línea separadora
+        doc.setDrawColor(235, 235, 235);
+        doc.setLineWidth(0.1);
+        doc.line(10, y + 3, 200, y + 3);
+
+        y += 8;
+    });
+
+    // --- FOOTER ---
+    doc.setDrawColor(244, 0, 9);
+    doc.setLineWidth(0.6);
+    doc.line(10, 283, 200, 283);
+    doc.setTextColor(160, 160, 160);
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Control de Vencimiento \u2014 Coca-Cola FEMSA', 105, 289, { align: 'center' });
+
+    return doc;
 }
 
 // ============================================================
