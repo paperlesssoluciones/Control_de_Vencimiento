@@ -956,7 +956,7 @@ function buildFefoPDF() {
     doc.setTextColor(160, 160, 160);
     doc.setFontSize(7);
     doc.setFont('helvetica', 'normal');
-    doc.text('Control de Vencimiento \u2014 Coca-Cola FEMSA', 105, 289, { align: 'center' });
+    doc.text('Control de Vencimiento', 105, 289, { align: 'center' });
 
     return doc;
 }
