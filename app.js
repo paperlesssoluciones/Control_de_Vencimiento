@@ -336,43 +336,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         document.querySelectorAll('.btn-edit').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
+            btn.addEventListener('click', (e) => {
                 const sku = e.currentTarget.getAttribute('data-sku');
                 const date = e.currentTarget.getAttribute('data-date');
-                let currentRecords = JSON.parse(localStorage.getItem('wms_records')) || [];
-                
-                const groupRecordsList = currentRecords.filter(r => r.sku === sku && r.expiryDate === date);
-                if (groupRecordsList.length === 0) return;
-                
-                const currentTotalQty = groupRecordsList.reduce((sum, r) => sum + parseInt(r.quantity, 10), 0);
-                
-                const newQtyStr = await showCustomPrompt(`Modificar Cantidad Total para SKU ${sku}:`, currentTotalQty.toString());
-                if (newQtyStr === null) return;
-                const newQty = parseInt(newQtyStr, 10);
-                if (isNaN(newQty) || newQty <= 0) {
-                    showCustomAlert("Cantidad inválida.");
-                    return;
-                }
-                
-                const newLoc = await showCustomPrompt(`Ubicación para la nueva cantidad consolidada:`, groupRecordsList[0].location || '');
-                if (newLoc === null) return;
-
-                currentRecords = currentRecords.filter(r => !(r.sku === sku && r.expiryDate === date));
-                
-                const consolidatedRecord = {
-                    id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-                    sku: sku,
-                    description: groupRecordsList[0].description,
-                    expiryDate: date,
-                    daysToExpiry: groupRecordsList[0].daysToExpiry,
-                    quantity: newQtyStr,
-                    location: newLoc,
-                    timestamp: new Date().toISOString()
-                };
-                currentRecords.push(consolidatedRecord);
-                
-                localStorage.setItem('wms_records', JSON.stringify(currentRecords));
-                renderHistoryTable();
+                openEditDetailModal(sku, date);
             });
         });
     }
@@ -446,28 +413,42 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- FUNCIONES DE EXPORTACIÓN ---
-    function buildCSVContent() {
+    function buildXLSXBlob() {
         const rawRecords = JSON.parse(localStorage.getItem('wms_records')) || [];
         const records = groupRecords(rawRecords);
         if (records.length === 0) return null;
 
-        let csv = "Secuencia,Fecha Toma,Hora Toma,SKU,Descripcion,Fecha Vencimiento,Dias para Vencer,Fecha Elaboracion,Cantidad,Ubicacion\n";
+        const headers = ['Secuencia', 'Fecha Toma', 'Hora Toma', 'SKU', 'Descripcion', 'Fecha Vencimiento', 'Dias para Vencer', 'Cantidad', 'Ubicacion'];
+        const data = [headers];
+
         records.forEach((r, index) => {
             const d = new Date(r.timestamp);
             const dateCap = `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getFullYear()}`;
             const timeCap = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
             const [y, m, day] = r.expiryDate.split('-');
             const expStr = `${day}/${m}/${y}`;
-            let prodStr = "";
-            if (r.productionDate) {
-                const [py, pm, pd] = r.productionDate.split('-');
-                prodStr = `${pd}/${pm}/${py}`;
-            }
-            const safeDesc = r.description ? `"${r.description.replace(/"/g, '""')}"` : '';
-            const safeLoc = r.location ? `"${r.location.replace(/"/g, '""')}"` : '';
-            csv += `${index + 1},${dateCap},${timeCap},${r.sku},${safeDesc},${expStr},${r.daysToExpiry},${prodStr},${r.quantity},${safeLoc}\n`;
+            data.push([
+                index + 1,
+                dateCap,
+                timeCap,
+                r.sku,
+                r.description || '',
+                expStr,
+                r.daysToExpiry,
+                r.quantity,
+                r.location || ''
+            ]);
         });
-        return csv;
+
+        const ws = XLSX.utils.aoa_to_sheet(data);
+        ws['!cols'] = [
+            { wch: 10 }, { wch: 13 }, { wch: 10 }, { wch: 10 },
+            { wch: 32 }, { wch: 16 }, { wch: 16 }, { wch: 10 }, { wch: 28 }
+        ];
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Inventario');
+        const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+        return new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     }
 
     function getDateFilename() {
@@ -488,18 +469,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     document.getElementById('btn-export-csv').addEventListener('click', () => {
-        const csv = buildCSVContent();
-        if (!csv) { showCustomAlert("No hay registros para exportar."); return; }
-        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-        downloadBlob(blob, `Inventario_WMS_${getDateFilename()}.csv`);
+        if (typeof XLSX === 'undefined') { showCustomAlert("Librería Excel no disponible. Verificá tu conexión e intentá de nuevo."); return; }
+        const blob = buildXLSXBlob();
+        if (!blob) { showCustomAlert("No hay registros para exportar."); return; }
+        downloadBlob(blob, `Inventario_WMS_${getDateFilename()}.xlsx`);
     });
 
     document.getElementById('btn-share-csv').addEventListener('click', async () => {
-        const csv = buildCSVContent();
-        if (!csv) { showCustomAlert("No hay registros para compartir."); return; }
-        const filename = `Inventario_WMS_${getDateFilename()}.csv`;
-        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-        const file = new File([blob], filename, { type: 'text/csv' });
+        if (typeof XLSX === 'undefined') { showCustomAlert("Librería Excel no disponible. Verificá tu conexión e intentá de nuevo."); return; }
+        const blob = buildXLSXBlob();
+        if (!blob) { showCustomAlert("No hay registros para compartir."); return; }
+        const filename = `Inventario_WMS_${getDateFilename()}.xlsx`;
+        const file = new File([blob], filename, { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 
         if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
             try {
@@ -513,7 +494,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } else {
             downloadBlob(blob, filename);
-            alert("Función de compartir no disponible en este navegador. El archivo fue descargado, adjuntalo manualmente al correo.");
+            showCustomAlert("Función de compartir no disponible en este navegador. El archivo fue descargado, adjuntalo manualmente al correo.");
         }
     });
 
@@ -678,6 +659,117 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+});
+
+// ============================================================
+// --- MODAL DE EDICIÓN POR REGISTRO INDIVIDUAL ---
+// ============================================================
+function openEditDetailModal(sku, date) {
+    const allRecords = JSON.parse(localStorage.getItem('wms_records')) || [];
+    const matching = allRecords.filter(r => r.sku === sku && r.expiryDate === date);
+
+    const [y, m, d] = date.split('-');
+    const dateStr = `${d}/${m}/${y}`;
+
+    const titleEl = document.getElementById('edit-detail-title');
+    const subtitleEl = document.getElementById('edit-detail-subtitle');
+    const listEl = document.getElementById('edit-detail-list');
+    const modal = document.getElementById('edit-detail-modal');
+
+    titleEl.textContent = `✏️ SKU ${sku}`;
+    subtitleEl.textContent = `Vencimiento: ${dateStr} — ${matching.length} registro(s) individuales`;
+    listEl.innerHTML = '';
+
+    if (matching.length === 0) {
+        listEl.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:16px;">No hay registros para este SKU y fecha.</p>';
+    }
+
+    matching.forEach((record) => {
+        const item = document.createElement('div');
+        item.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1.5px solid var(--border-color);border-radius:10px;background:var(--bg-body);gap:10px;';
+
+        const hora = (() => {
+            const t = new Date(record.timestamp);
+            return `${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}`;
+        })();
+
+        item.innerHTML = `
+            <div style="flex:1;min-width:0;">
+                <div style="font-weight:700;font-size:14px;color:var(--text-main);">${record.location || '(sin ubicación)'}</div>
+                <div style="font-size:12px;color:var(--text-muted);margin-top:2px;">Cantidad: <strong style="color:var(--text-main);">${record.quantity}</strong> &nbsp;·&nbsp; ${hora}</div>
+            </div>
+            <div style="display:flex;gap:6px;flex-shrink:0;">
+                <button data-id="${record.id}" class="detail-edit-btn" style="padding:7px 12px;font-size:13px;font-weight:700;background:var(--primary);color:white;border:none;border-radius:8px;cursor:pointer;">✏️</button>
+                <button data-id="${record.id}" class="detail-delete-btn" style="padding:7px 12px;font-size:13px;font-weight:700;background:transparent;color:var(--danger);border:2px solid var(--danger);border-radius:8px;cursor:pointer;">🗑️</button>
+            </div>
+        `;
+        listEl.appendChild(item);
+    });
+
+    listEl.querySelectorAll('.detail-edit-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const id = e.currentTarget.getAttribute('data-id');
+            const rec = matching.find(r => r.id === id);
+            if (!rec) return;
+
+            const newQtyStr = await showCustomPrompt(
+                `Nueva cantidad para "${rec.location || 'sin ubicación'}":`,
+                rec.quantity.toString()
+            );
+            if (newQtyStr === null) return;
+            const newQty = parseInt(newQtyStr, 10);
+            if (isNaN(newQty) || newQty <= 0) {
+                showCustomAlert("Cantidad inválida. Debe ser un número mayor a 0.");
+                return;
+            }
+
+            const all = JSON.parse(localStorage.getItem('wms_records')) || [];
+            const idx = all.findIndex(r => r.id === id);
+            if (idx !== -1) {
+                all[idx].quantity = newQty.toString();
+                localStorage.setItem('wms_records', JSON.stringify(all));
+            }
+
+            if (typeof renderHistoryTable === 'function') renderHistoryTable();
+            modal.classList.add('hidden');
+            openEditDetailModal(sku, date);
+        });
+    });
+
+    listEl.querySelectorAll('.detail-delete-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const id = e.currentTarget.getAttribute('data-id');
+            const rec = matching.find(r => r.id === id);
+            const locName = rec ? (rec.location || 'sin ubicación') : '';
+            if (!await showCustomConfirm(`¿Eliminar el registro de "${locName}"?`)) return;
+
+            let all = JSON.parse(localStorage.getItem('wms_records')) || [];
+            all = all.filter(r => r.id !== id);
+            localStorage.setItem('wms_records', JSON.stringify(all));
+
+            if (typeof renderHistoryTable === 'function') renderHistoryTable();
+
+            const remaining = all.filter(r => r.sku === sku && r.expiryDate === date);
+            modal.classList.add('hidden');
+            if (remaining.length > 0) openEditDetailModal(sku, date);
+        });
+    });
+
+    modal.classList.remove('hidden');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const editDetailClose = document.getElementById('edit-detail-close');
+    if (editDetailClose) {
+        editDetailClose.addEventListener('click', () => {
+            document.getElementById('edit-detail-modal').classList.add('hidden');
+        });
+    }
+    document.getElementById('edit-detail-modal').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('edit-detail-modal')) {
+            document.getElementById('edit-detail-modal').classList.add('hidden');
+        }
+    });
 });
 
 // ============================================================
